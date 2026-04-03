@@ -6,12 +6,17 @@ import { loadWatchedAddresses } from "./addressStore";
 import { config } from "./config";
 import { syncAlchemyWebhookAddresses } from "./sync";
 import { createAlchemyWebhookHandler } from "./webhookHandler";
+import { createBatchSwap5792, type BatchSwap5792Request } from "./uniswap";
 import {
+  configureGatewayDeps,
   handleGatewayRequest,
   registerSubdomain,
   updateSubdomainTextRecords,
   getSubdomainWithRecords,
   getAllSubdomains,
+  getSubdomainByStealthAddress,
+  getSubdomainBySeed,
+  pruneStaleStealthAddresses,
 } from "./gateway";
 
 async function bootstrap(): Promise<void> {
@@ -68,12 +73,37 @@ async function bootstrap(): Promise<void> {
     console.log("[alchemy] skipping webhook bootstrap because ALCHEMY_API_KEY or ALCHEMY_AUTH_TOKEN is missing");
   }
 
+  configureGatewayDeps({
+    onStealthAddressGenerated: async (address) => {
+      const normalized = address.toLowerCase();
+      if (!manager || !webhookId) {
+        return;
+      }
+
+      if (watchedAddresses.has(normalized)) {
+        return;
+      }
+
+      await manager.updateWatchedAddresses({
+        webhookId,
+        addressesToAdd: [normalized],
+        addressesToRemove: [],
+      });
+
+      watchedAddresses.add(normalized);
+      if (webhookDeps) {
+        webhookDeps.watchedAddressSet = watchedAddresses;
+      }
+    },
+  });
+
   // ── Health ───────────────────────────────────────────────────────
 
   app.get("/health", (_req, res) => {
     res.json({
       ok: true,
       alchemyConfigured: config.hasAlchemyConfig,
+      uniswapConfigured: config.hasUniswapConfig,
       ensDomain: config.ensDomain || null,
       watchedAddresses: watchedAddresses.size,
     });
@@ -132,6 +162,24 @@ async function bootstrap(): Promise<void> {
     }
   });
 
+  // ── Uniswap batch quote + swap_5792 wrapper ─────────────────────
+
+  app.post("/swap_5792", async (req, res) => {
+    try {
+      if (!config.hasUniswapConfig || !config.uniswapApiKey) {
+        res.status(503).json({ ok: false, error: "UNISWAP_API_KEY is not configured" });
+        return;
+      }
+
+      const payload = req.body as BatchSwap5792Request;
+      const result = await createBatchSwap5792(payload, config.uniswapApiKey);
+      res.json({ ok: true, ...result });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(400).json({ ok: false, error: message });
+    }
+  });
+
   // ── ENS CCIP-Read gateway (ERC-3668) ────────────────────────────
 
   app.get("/gateway/:sender/:data", handleGatewayRequest);
@@ -162,11 +210,50 @@ async function bootstrap(): Promise<void> {
     }
   });
 
+  app.get("/getSubdomainByStealthAddress", async (req, res) => {
+    try {
+      const address = String(req.query.address ?? "").trim();
+      if (!address) {
+        res.status(400).json({ ok: false, error: "address query param is required" });
+        return;
+      }
+      const result = await getSubdomainByStealthAddress(address);
+      if (!result) {
+        res.status(404).json({ ok: false, error: "No subdomain mapping found for address" });
+        return;
+      }
+      res.json({ ok: true, result });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ ok: false, error: message });
+    }
+  });
+
+  app.get("/getSubdomainBySeed", async (req, res) => {
+    try {
+      const seedAddress = String(req.query.seedAddress ?? "").trim();
+      if (!seedAddress) {
+        res.status(400).json({ ok: false, error: "seedAddress query param is required" });
+        return;
+      }
+      const result = await getSubdomainBySeed(seedAddress);
+      if (!result) {
+        res.status(404).json({ ok: false, error: "No subdomain found for seedAddress" });
+        return;
+      }
+      res.json({ ok: true, subdomain: result });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ ok: false, error: message });
+    }
+  });
+
   app.post("/subdomains/register", async (req, res) => {
     try {
-      const { name, owner, text, addresses } = req.body as {
+      const { name, owner, seedAddress, text, addresses } = req.body as {
         name?: string;
         owner?: string;
+        seedAddress?: string;
         text?: Array<{ key: string; value: string }>;
         addresses?: Array<{ coinType: number; address: string }>;
       };
@@ -182,7 +269,7 @@ async function bootstrap(): Promise<void> {
         return;
       }
 
-      await registerSubdomain(name, owner, text, addresses);
+      await registerSubdomain(name, owner, seedAddress, text, addresses);
 
       // Sync webhook addresses after registration
       if (manager) {
@@ -234,15 +321,37 @@ async function bootstrap(): Promise<void> {
 
   // ── Start ───────────────────────────────────────────────────────
 
+  if (manager) {
+    setInterval(async () => {
+      try {
+        const removed = await pruneStaleStealthAddresses();
+        if (removed > 0) {
+          const syncResult = await syncAlchemyWebhookAddresses(manager);
+          webhookId = syncResult.webhookId;
+          watchedAddresses = new Set(await loadWatchedAddresses());
+          if (webhookDeps) {
+            webhookDeps.watchedAddressSet = watchedAddresses;
+          }
+          console.log(`[cleanup] pruned=${removed}, webhook total=${syncResult.total}`);
+        }
+      } catch (error) {
+        console.warn("[cleanup] failed:", error);
+      }
+    }, 60_000);
+  }
+
   app.listen(config.port, () => {
     console.log(`express server running on http://localhost:${config.port}`);
     console.log("endpoints:");
     console.log("  GET  /health");
     console.log("  POST /webhooks/alchemy");
     console.log("  POST /sync-addresses");
+    console.log("  POST /swap_5792");
     console.log("  GET  /gateway/:sender/:data");
     console.log("  GET  /subdomains");
     console.log("  GET  /subdomains/:name");
+    console.log("  GET  /getSubdomainByStealthAddress?address=0x...");
+    console.log("  GET  /getSubdomainBySeed?seedAddress=0x...");
     console.log("  POST /subdomains/register");
     console.log("  POST /subdomains/update-text");
   });

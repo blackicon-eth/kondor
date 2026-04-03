@@ -2,7 +2,7 @@ import { loadSyncedAddresses, saveSyncedAddresses, saveWatchedAddresses } from "
 import { AlchemyWebhookManager } from "./alchemyWebhookManager";
 import { config } from "./config";
 import { getDb } from "./db.js";
-import { subdomainAddresses } from "../../shared/db/db.schema.js";
+import { subdomainAddresses, stealthAddresses } from "../../shared/db/db.schema.js";
 
 export interface SyncResult {
   webhookId: string;
@@ -23,6 +23,8 @@ function diffAddresses(previous: string[], next: string[]): { toAdd: string[]; t
 
 async function getAddressesFromDb(): Promise<string[]> {
   const rows = await getDb().select({ address: subdomainAddresses.address }).from(subdomainAddresses);
+  const stealthRows = await getDb().select().from(stealthAddresses);
+  const cutoff = Date.now() - 20 * 60 * 1000;
   const seen = new Set<string>();
   const addresses: string[] = [];
   for (const row of rows) {
@@ -32,6 +34,20 @@ async function getAddressesFromDb(): Promise<string[]> {
       addresses.push(v);
     }
   }
+
+  for (const row of stealthRows) {
+    const createdAtMs = row.createdAt?.getTime() ?? 0;
+    const triggeredAtMs = row.lastTriggeredAt?.getTime() ?? 0;
+    const isFresh = createdAtMs >= cutoff || triggeredAtMs >= cutoff;
+    if (!isFresh) continue;
+
+    const v = row.address.trim().toLowerCase();
+    if (v && !seen.has(v)) {
+      seen.add(v);
+      addresses.push(v);
+    }
+  }
+
   return addresses;
 }
 

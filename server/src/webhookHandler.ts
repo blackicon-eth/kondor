@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { config } from "./config";
 import { AddressActivity, WebhookPayload } from "../../shared/types.js";
 import { normalizeAddress, verifyAlchemySignature } from "../../shared/utils.js";
+import { markStealthAddressTriggered } from "./gateway";
 
 export interface WebhookHandlerDeps {
   watchedAddressSet: Set<string>;
@@ -70,6 +71,7 @@ export function createAlchemyWebhookHandler(deps: WebhookHandlerDeps) {
       });
 
       // TODO: look up subdomain policy from DB and trigger CRE workflow
+      await markStealthAddressTriggered(to);
     }
 
     res.status(200).json({ ok: true, matched: matched.length });
