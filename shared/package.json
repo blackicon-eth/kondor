@@ -2,6 +2,7 @@
   "name": "shared",
   "version": "1.0.0",
   "description": "Shared code used across frontend, server, and other packages.",
+  "type": "module",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -10,6 +11,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@noble/hashes": "^1.6.0",
     "drizzle-orm": "^0.45.2"
   }
 }
