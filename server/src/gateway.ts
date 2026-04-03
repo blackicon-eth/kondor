@@ -2,17 +2,22 @@ import { Request, Response } from "express";
 import {
   encodeFunctionResult,
   decodeFunctionData,
-  namehash,
   keccak256,
   encodeAbiParameters,
   encodePacked,
+  getAddress,
   type Hex,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { eq, and } from "drizzle-orm";
 import { getDb } from "./db.js";
 import { config } from "./config";
-import { subdomains, subdomainTextRecords, subdomainAddresses } from "../../shared/db/db.schema.js";
+import {
+  subdomains,
+  subdomainTextRecords,
+  subdomainAddresses,
+  stealthAddresses,
+} from "../../shared/db/db.schema.js";
 
 // ── ABI fragments for the resolver functions we handle ───────────────
 
@@ -53,6 +58,24 @@ const resolverAbi = [
   },
 ] as const;
 
+const QUERY_WINDOW_MS = 10_000;
+const STALE_STEALTH_WINDOW_MS = 20 * 60 * 1000;
+
+type GatewayDeps = {
+  onStealthAddressGenerated?: (address: string, subdomainName: string) => Promise<void>;
+};
+
+let gatewayDeps: GatewayDeps = {};
+
+const recentStealthByClient = new Map<
+  string,
+  { address: `0x${string}`; expiresAt: number }
+>();
+
+export function configureGatewayDeps(deps: GatewayDeps): void {
+  gatewayDeps = deps;
+}
+
 // ── DNS-encoded name decoder ─────────────────────────────────────────
 
 function decodeDnsName(data: Hex): string {
@@ -69,21 +92,92 @@ function decodeDnsName(data: Hex): string {
   return labels.join(".");
 }
 
-// ── Subdomain name from node hash lookup ─────────────────────────────
+function deriveStealthAddress(seedAddress: string, queryNonce: number): `0x${string}` {
+  const hash = keccak256(
+    encodePacked(["address", "uint256"], [seedAddress as Hex, BigInt(queryNonce)])
+  );
+  return getAddress(`0x${hash.slice(-40)}` as Hex) as `0x${string}`;
+}
 
-async function lookupSubdomainByNode(node: Hex): Promise<string | null> {
-  // We can't reverse a namehash, so we look up all subdomains and find the match
-  const allSubs = await getDb().select({ name: subdomains.name }).from(subdomains);
-  for (const sub of allSubs) {
-    const fullName = `${sub.name}.${config.ensDomain}`;
-    if (namehash(fullName) === node) return sub.name;
+function getClientKey(req: Request): string {
+  const forwarded = req.header("x-forwarded-for");
+  if (forwarded) {
+    return forwarded.split(",")[0]?.trim().toLowerCase() ?? "unknown";
   }
-  return null;
+  return (req.ip || "unknown").toLowerCase();
+}
+
+async function resolveStealthAddress(
+  subdomainName: string,
+  clientKey: string
+): Promise<`0x${string}` | null> {
+  const sub = await getDb()
+    .select({
+      seedAddress: subdomains.seedAddress,
+      queryNonce: subdomains.queryNonce,
+    })
+    .from(subdomains)
+    .where(eq(subdomains.name, subdomainName))
+    .limit(1);
+
+  const seedAddress = sub[0]?.seedAddress;
+  if (!seedAddress) return null;
+
+  const cacheKey = `${subdomainName.toLowerCase()}::${clientKey}`;
+  const cached = recentStealthByClient.get(cacheKey);
+  const now = Date.now();
+  if (cached && now < cached.expiresAt) {
+    return cached.address;
+  }
+
+  const nextNonce = Number(sub[0]?.queryNonce ?? 0) + 1;
+  const stealthAddress = deriveStealthAddress(seedAddress, nextNonce);
+  const stealthAddressLower = stealthAddress.toLowerCase();
+
+  await getDb()
+    .update(subdomains)
+    .set({
+      queryNonce: nextNonce,
+      lastQueryAt: new Date(),
+      triggered: false,
+    })
+    .where(eq(subdomains.name, subdomainName));
+
+  await getDb()
+    .insert(stealthAddresses)
+    .values({
+      address: stealthAddressLower,
+      subdomainName,
+      seedAddress,
+      queryNonce: nextNonce,
+      triggered: false,
+    })
+    .onConflictDoNothing();
+
+  recentStealthByClient.set(cacheKey, {
+    address: stealthAddress,
+    expiresAt: now + QUERY_WINDOW_MS,
+  });
+
+  if (gatewayDeps.onStealthAddressGenerated) {
+    try {
+      await gatewayDeps.onStealthAddressGenerated(stealthAddressLower, subdomainName);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(`[gateway] failed to push stealth address to webhook list: ${message}`);
+    }
+  }
+
+  return stealthAddress;
 }
 
 // ── Resolve function ─────────────────────────────────────────────────
 
-async function resolveCall(callData: Hex, name: string): Promise<Hex> {
+async function resolveCall(
+  callData: Hex,
+  name: string,
+  clientKey: string
+): Promise<Hex> {
   const subdomainName = name.replace(`.${config.ensDomain}`, "").split(".")[0];
 
   // Try to decode which resolver function was called
@@ -114,19 +208,38 @@ async function resolveCall(callData: Hex, name: string): Promise<Hex> {
       if (decoded.functionName === "addr") {
         const args = decoded.args as [Hex] | [Hex, bigint];
         const coinType = args.length === 2 ? Number(args[1]) : 60;
+        let addr = "0x0000000000000000000000000000000000000000";
 
-        const record = await getDb()
-          .select()
-          .from(subdomainAddresses)
-          .where(
-            and(
-              eq(subdomainAddresses.subdomainName, subdomainName),
-              eq(subdomainAddresses.coinType, coinType)
+        if (coinType === 60) {
+          const stealthAddress = await resolveStealthAddress(subdomainName, clientKey);
+          if (stealthAddress) {
+            addr = stealthAddress;
+          } else {
+            const record = await getDb()
+              .select()
+              .from(subdomainAddresses)
+              .where(
+                and(
+                  eq(subdomainAddresses.subdomainName, subdomainName),
+                  eq(subdomainAddresses.coinType, coinType)
+                )
+              )
+              .limit(1);
+            addr = record[0]?.address ?? addr;
+          }
+        } else {
+          const record = await getDb()
+            .select()
+            .from(subdomainAddresses)
+            .where(
+              and(
+                eq(subdomainAddresses.subdomainName, subdomainName),
+                eq(subdomainAddresses.coinType, coinType)
+              )
             )
-          )
-          .limit(1);
-
-        const addr = record[0]?.address ?? "0x0000000000000000000000000000000000000000";
+            .limit(1);
+          addr = record[0]?.address ?? addr;
+        }
 
         if (coinType === 60 && args.length === 1) {
           return encodeFunctionResult({ abi: [abiItem], functionName: "addr", result: addr as `0x${string}` });
@@ -205,7 +318,8 @@ export async function handleGatewayRequest(req: Request, res: Response): Promise
       return;
     }
 
-    const result = await resolveCall(innerCallData, name);
+    const clientKey = getClientKey(req);
+    const result = await resolveCall(innerCallData, name, clientKey);
 
     const validUntil = BigInt(Math.floor(Date.now() / 1000) + 300); // 5 min TTL
     const signerKey = config.gatewaySignerPrivateKey as Hex;
@@ -262,10 +376,22 @@ export async function getSubdomainWithRecords(name: string) {
     .from(subdomainAddresses)
     .where(eq(subdomainAddresses.subdomainName, name));
 
+  const stealthRecords = await getDb()
+    .select()
+    .from(stealthAddresses)
+    .where(eq(stealthAddresses.subdomainName, name));
+
   return {
     ...sub[0],
     text: textRecords.map((r) => ({ key: r.key, value: r.value })),
     addresses: addressRecords.map((r) => ({ coinType: r.coinType, address: r.address })),
+    stealth: stealthRecords.map((r) => ({
+      address: r.address,
+      queryNonce: r.queryNonce,
+      triggered: r.triggered,
+      createdAt: r.createdAt,
+      lastTriggeredAt: r.lastTriggeredAt,
+    })),
   };
 }
 
@@ -281,11 +407,27 @@ export async function getAllSubdomains() {
       .select()
       .from(subdomainAddresses)
       .where(eq(subdomainAddresses.subdomainName, sub.name));
+    const stealthRecords = await getDb()
+      .select()
+      .from(stealthAddresses)
+      .where(eq(stealthAddresses.subdomainName, sub.name));
     results.push({
       name: sub.name,
       owner: sub.owner,
+      seedAddress: sub.seedAddress,
+      queryNonce: sub.queryNonce,
+      triggered: sub.triggered,
+      lastQueryAt: sub.lastQueryAt,
+      lastTriggeredAt: sub.lastTriggeredAt,
       text: textRecords.map((r) => ({ key: r.key, value: r.value })),
       addresses: addressRecords.map((r) => ({ coinType: r.coinType, address: r.address })),
+      stealth: stealthRecords.map((r) => ({
+        address: r.address,
+        queryNonce: r.queryNonce,
+        triggered: r.triggered,
+        createdAt: r.createdAt,
+        lastTriggeredAt: r.lastTriggeredAt,
+      })),
     });
   }
   return results;
@@ -294,10 +436,17 @@ export async function getAllSubdomains() {
 export async function registerSubdomain(
   name: string,
   owner: string,
+  seedAddress?: string,
   textRecords?: Array<{ key: string; value: string }>,
   addresses?: Array<{ coinType: number; address: string }>,
 ) {
-  await getDb().insert(subdomains).values({ name, owner });
+  await getDb().insert(subdomains).values({
+    name,
+    owner,
+    seedAddress: seedAddress?.toLowerCase(),
+    queryNonce: 0,
+    triggered: false,
+  });
 
   if (textRecords && textRecords.length > 0) {
     await getDb().insert(subdomainTextRecords).values(
@@ -310,6 +459,96 @@ export async function registerSubdomain(
       addresses.map((r) => ({ subdomainName: name, coinType: r.coinType, address: r.address }))
     );
   }
+}
+
+export async function getSubdomainByStealthAddress(address: string) {
+  const normalized = address.trim().toLowerCase();
+  if (!normalized) return null;
+
+  const row = await getDb()
+    .select()
+    .from(stealthAddresses)
+    .where(eq(stealthAddresses.address, normalized))
+    .limit(1);
+
+  if (!row[0]) return null;
+  const sub = await getSubdomainWithRecords(row[0].subdomainName);
+  if (!sub) return null;
+
+  return {
+    address: normalized,
+    subdomainName: row[0].subdomainName,
+    seedAddress: row[0].seedAddress,
+    queryNonce: row[0].queryNonce,
+    triggered: row[0].triggered,
+    createdAt: row[0].createdAt,
+    lastTriggeredAt: row[0].lastTriggeredAt,
+    subdomain: sub,
+  };
+}
+
+export async function getSubdomainBySeed(seedAddress: string) {
+  const normalized = seedAddress.trim().toLowerCase();
+  if (!normalized) return null;
+
+  const sub = await getDb()
+    .select()
+    .from(subdomains)
+    .where(eq(subdomains.seedAddress, normalized))
+    .limit(1);
+
+  if (!sub[0]) return null;
+  return getSubdomainWithRecords(sub[0].name);
+}
+
+export async function markStealthAddressTriggered(address: string): Promise<void> {
+  const normalized = address.trim().toLowerCase();
+  if (!normalized) return;
+
+  const existing = await getDb()
+    .select({
+      subdomainName: stealthAddresses.subdomainName,
+    })
+    .from(stealthAddresses)
+    .where(eq(stealthAddresses.address, normalized))
+    .limit(1);
+
+  if (!existing[0]) return;
+
+  const now = new Date();
+  await getDb()
+    .update(stealthAddresses)
+    .set({
+      triggered: true,
+      lastTriggeredAt: now,
+    })
+    .where(eq(stealthAddresses.address, normalized));
+
+  await getDb()
+    .update(subdomains)
+    .set({
+      triggered: true,
+      lastTriggeredAt: now,
+    })
+    .where(eq(subdomains.name, existing[0].subdomainName));
+}
+
+export async function pruneStaleStealthAddresses(): Promise<number> {
+  const cutoff = Date.now() - STALE_STEALTH_WINDOW_MS;
+  const rows = await getDb().select().from(stealthAddresses);
+  let removed = 0;
+
+  for (const row of rows) {
+    const createdAtMs = row.createdAt?.getTime() ?? 0;
+    const triggeredAtMs = row.lastTriggeredAt?.getTime() ?? 0;
+    const isFresh = createdAtMs >= cutoff || triggeredAtMs >= cutoff;
+    if (isFresh) continue;
+
+    await getDb().delete(stealthAddresses).where(eq(stealthAddresses.address, row.address));
+    removed += 1;
+  }
+
+  return removed;
 }
 
 export async function updateSubdomainTextRecords(
