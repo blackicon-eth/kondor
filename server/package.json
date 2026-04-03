@@ -1,0 +1,9 @@
+{
+  "name": "kondor-server",
+  "version": "0.0.1",
+  "description": "Kondor backend server",
+  "private": true,
+  "scripts": {},
+  "dependencies": {},
+  "devDependencies": {}
+}
