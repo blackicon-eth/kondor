@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 
 export default function TestPage() {
   const { ready, authenticated, user: privyUser, getAccessToken, login, logout } = usePrivy();
-  const { user, loading, onboarded, completeOnboarding } = useUser();
+  const { user, loading, completedOnboarding, completeOnboarding } = useUser();
   const [result, setResult] = useState<string>("");
 
   async function testAuth() {
@@ -34,7 +34,7 @@ export default function TestPage() {
         <p>Privy ready: {String(ready)}</p>
         <p>Authenticated: {String(authenticated)}</p>
         <p>User context loading: {String(loading)}</p>
-        <p>Onboarded: {String(onboarded)}</p>
+        <p>Onboarded: {String(completedOnboarding)}</p>
         {privyUser && <p>Privy User ID: {privyUser.id}</p>}
         {user && <p>DB Seed Address: {user.seedAddress}</p>}
         {user && <p>ENS Subdomain: {user.ensSubdomain ?? "null"}</p>}

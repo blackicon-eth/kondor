@@ -31,7 +31,7 @@ import { TokenIcon } from "@/components/token-icon";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { buildPolicy, buildTextRecord, policyToFlowConfig, type OutcomeConfig, type FlowConfig, type EncryptedPolicy } from "@/lib/policies/utils";
+import { buildPolicy, buildTextRecord, policyToFlowConfig, type OutcomeConfig, type FlowConfig } from "@/lib/policies/utils";
 import {
   Dialog,
   DialogContent,

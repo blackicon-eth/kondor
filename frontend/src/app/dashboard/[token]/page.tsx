@@ -46,8 +46,8 @@ export default function DashboardToken() {
   // so no need to validate against a potentially-stale existingTokens array.
   const activeToken = selectedToken || (existingTokens[0] ?? "");
 
-  function handleTokenChange(newToken: string) {
-    setSelectedToken(newToken);
+  function handleTokenChange(newToken: string | null) {
+    if (newToken) setSelectedToken(newToken);
   }
 
   function handlePolicyUpdate() {
