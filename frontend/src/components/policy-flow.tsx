@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ReactFlow,
   Background,
@@ -24,11 +24,18 @@ import {
   ChevronDown,
   Minus,
   Plus,
+  Loader2,
 } from "lucide-react";
+import { TokenIcon } from "@web3icons/react/dynamic";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { buildPolicy, type OutcomeConfig, type FlowConfig } from "@/lib/policies/utils";
+import { buildPolicy, buildTextRecord, policyToFlowConfig, type OutcomeConfig, type FlowConfig } from "@/lib/policies/utils";
+import { useUser } from "@/context/user-context";
+import { encryptPolicy, decryptPolicy, ENCRYPTION_SIGN_MESSAGE } from "@/lib/policies/encrypt";
+import { useWallets, usePrivy } from "@privy-io/react-auth";
+import ky from "ky";
+import { toast } from "sonner";
 
 // ─── Token list ──────────────────────────────────────────────────────────────
 const TOKENS = [
@@ -91,9 +98,7 @@ function TokenSourceNode({ data }: NodeProps) {
     <div className="relative">
       <NodeShell label="SOURCE" sublabel="TRIGGER" accent glowing>
         <div className="flex items-center gap-3 min-w-[200px]">
-          <div className="size-10 rounded-full bg-[#2775CA]/15 border border-[#2775CA]/30 flex items-center justify-center">
-            <span className="text-[#2775CA] font-headline font-bold text-sm">$</span>
-          </div>
+          <TokenIcon symbol={config.sourceToken} variant="branded" size={48} />
           <div>
             <div className="font-headline font-bold text-on-surface text-lg tracking-tight">
               {config.sourceToken}
@@ -408,24 +413,55 @@ const defaultOutcome: OutcomeConfig = {
 
 export default function PolicyFlow({
   onConfirm,
+  ensName = "",
   inputToken = "USDC",
   height = "550px",
 }: {
   onConfirm?: (policy: ReturnType<typeof buildPolicy>) => void;
+  ensName?: string;
   inputToken?: string;
   height?: string;
 }) {
-  const [config, setConfig] = useState<PolicyConfig>({
-    sourceToken: inputToken,
-    branchingEnabled: false,
-    condition: { token: "WETH", operator: ">", amount: 3000 },
-    outcomeIf: { ...defaultOutcome },
-    outcomeElse: { swapToken: "WETH", swapPct: 0, aavePct: 100, destPct: 0 },
-    outcome: { ...defaultOutcome },
-    destinationWallet: "",
-    railgunWallet: "",
-    privateMode: false,
+  const { wallets } = useWallets();
+  const { user: privyUser, getAccessToken } = usePrivy();
+  const { user, refetch, userPolicies } = useUser();
+  const [saving, setSaving] = useState(false);
+
+  console.log("[TEST] userPolicies:", userPolicies);
+  console.log("[TEST] inputToken:", inputToken);
+  if (userPolicies) {
+    const fromPolicy = policyToFlowConfig(userPolicies, inputToken);
+    console.log("[TEST] fromPolicy:", fromPolicy);
+  }
+
+  const [config, setConfig] = useState<PolicyConfig>(() => {
+    if (userPolicies) {
+      const fromPolicy = policyToFlowConfig(userPolicies, inputToken);
+      if (fromPolicy) return fromPolicy;
+    }
+    return {
+      sourceToken: inputToken,
+      branchingEnabled: false,
+      condition: { token: "WETH", operator: ">", amount: 3000 },
+      outcomeIf: { ...defaultOutcome },
+      outcomeElse: { swapToken: "WETH", swapPct: 0, aavePct: 100, destPct: 0 },
+      outcome: { ...defaultOutcome },
+      destinationWallet: "",
+      railgunWallet: "",
+      privateMode: false,
+    };
   });
+
+  // Sync config when userPolicies becomes available
+  const [initialized, setInitialized] = useState(false);
+  useEffect(() => {
+    if (initialized || !userPolicies) return;
+    const fromPolicy = policyToFlowConfig(userPolicies, inputToken);
+    if (fromPolicy) {
+      setConfig(fromPolicy);
+      setInitialized(true);
+    }
+  }, [userPolicies, inputToken, initialized]);
 
   const toggleBranching = useCallback(() => {
     setConfig((prev) => ({ ...prev, branchingEnabled: !prev.branchingEnabled }));
@@ -583,9 +619,137 @@ export default function PolicyFlow({
     return { nodes: n, edges: e };
   }, [config, updateCondition, makeOutcomeUpdater, updateDestination]);
 
-  function handleTestLog() {
-    const policy = buildPolicy(config);
-    console.log("[TEST] Policy JSON:", JSON.stringify(policy, null, 2));
+  async function handleTestLog() {
+    try {
+      console.log("[TEST] Step 1: Building plaintext policy...");
+      const policy = buildPolicy(config);
+      console.log("[TEST] Step 1 result:", JSON.stringify(policy, null, 2));
+
+      console.log("[TEST] Step 2: Signing message for key derivation...");
+      const wallet = wallets.find((w) => w.walletClientType === "privy");
+      if (!wallet) throw new Error("No Privy wallet found");
+      const signature = await wallet.sign(ENCRYPTION_SIGN_MESSAGE);
+      console.log("[TEST] Step 2 result: signature =", signature);
+
+      console.log("[TEST] Step 3: Encrypting policy...");
+      const crePublicKey = process.env.NEXT_PUBLIC_CRE_PUBLIC_KEY!;
+      const encrypted = encryptPolicy(policy, signature, crePublicKey);
+      console.log("[TEST] Step 3 result:", JSON.stringify(encrypted, null, 2));
+
+      console.log("[TEST] Step 4: Building text record...");
+      const textRecord = buildTextRecord(encrypted, ensName);
+      console.log("[TEST] Step 4 result:", JSON.stringify(textRecord, null, 2));
+
+      console.log("[TEST] Step 5: Saving to database...");
+      const privyWallet = privyUser?.linkedAccounts.find(
+        (a) => a.type === "wallet" && a.walletClientType === "privy"
+      );
+      if (!privyWallet || !("address" in privyWallet)) throw new Error("No Privy wallet found");
+
+      const token = await getAccessToken();
+      const res = await ky.put("/api/user/text-records", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "x-seed-address": privyWallet.address,
+        },
+        json: { textRecords: textRecord },
+      }).json();
+      console.log("[TEST] Step 5 result:", JSON.stringify(res, null, 2));
+
+      await refetch();
+      console.log("[TEST] Done — text record saved to database");
+    } catch (e) {
+      console.error("[TEST] Failed:", e);
+    }
+  }
+
+  async function handleConfirm() {
+    const wallet = wallets.find((w) => w.walletClientType === "privy");
+    if (!wallet) return;
+
+    const privyWallet = privyUser?.linkedAccounts.find(
+      (a) => a.type === "wallet" && a.walletClientType === "privy"
+    );
+    if (!privyWallet || !("address" in privyWallet)) return;
+
+    setSaving(true);
+    try {
+      const policy = buildPolicy(config);
+      const signature = await wallet.sign(ENCRYPTION_SIGN_MESSAGE);
+      const crePublicKey = process.env.NEXT_PUBLIC_CRE_PUBLIC_KEY!;
+      const encrypted = encryptPolicy(policy, signature, crePublicKey);
+      const textRecord = buildTextRecord(encrypted, ensName);
+
+      const token = await getAccessToken();
+      await ky.put("/api/user/text-records", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "x-seed-address": privyWallet.address,
+        },
+        json: { textRecords: textRecord },
+      });
+
+      await refetch();
+      onConfirm?.(policy);
+    } catch (e) {
+      console.error("[Policy] Save failed:", e);
+      toast.error("Failed to save policy");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleTestDecrypt() {
+    try {
+      console.log("[TEST-DECRYPT] Step 1: Reading text records from user context...");
+      if (!user) throw new Error("No user in context");
+      const textRecords = JSON.parse(user.textRecords || "{}");
+      console.log("[TEST-DECRYPT] Text records:", JSON.stringify(textRecords, null, 2));
+
+      const policyStr = textRecords["kondor-policy"];
+      if (!policyStr) {
+        console.log("[TEST-DECRYPT] No kondor-policy found in text records");
+        return;
+      }
+
+      console.log("[TEST-DECRYPT] Step 2: Parsing encrypted policy...");
+      const encryptedPolicy = JSON.parse(policyStr);
+      console.log("[TEST-DECRYPT] Encrypted policy metadata:", {
+        destinationChain: encryptedPolicy.destinationChain,
+        isRailgun: encryptedPolicy.isRailgun,
+        isOfframp: encryptedPolicy.isOfframp,
+        forwardTo: encryptedPolicy.forwardTo,
+        tokenCount: encryptedPolicy.tokens?.length,
+      });
+
+      console.log("[TEST-DECRYPT] Step 3: Signing for key derivation...");
+      const wallet = wallets.find((w) => w.walletClientType === "privy");
+      if (!wallet) throw new Error("No Privy wallet found");
+      const signature = await wallet.sign(ENCRYPTION_SIGN_MESSAGE);
+
+      console.log("[TEST-DECRYPT] Step 4: Decrypting tokens...");
+      const crePublicKey = process.env.NEXT_PUBLIC_CRE_PUBLIC_KEY!;
+      const decryptedTokens = decryptPolicy(encryptedPolicy.tokens, signature, crePublicKey);
+      console.log("[TEST-DECRYPT] Step 4 result:", JSON.stringify(decryptedTokens, null, 2));
+
+      console.log("[TEST-DECRYPT] Step 5: Full decrypted policy:");
+      const fullPolicy = {
+        destinationChain: encryptedPolicy.destinationChain,
+        isRailgun: encryptedPolicy.isRailgun,
+        isOfframp: encryptedPolicy.isOfframp,
+        forwardTo: encryptedPolicy.forwardTo,
+        tokens: decryptedTokens,
+      };
+      console.log("[TEST-DECRYPT] Result:", JSON.stringify(fullPolicy, null, 2));
+
+      console.log("[TEST-DECRYPT] Extra info from text records:");
+      console.log("[TEST-DECRYPT] description:", textRecords.description);
+      console.log("[TEST-DECRYPT] railgunAddress:", textRecords.railgunAddress);
+
+      console.log("[TEST-DECRYPT] Done");
+    } catch (e) {
+      console.error("[TEST-DECRYPT] Failed:", e);
+    }
   }
 
   return (
@@ -621,14 +785,21 @@ export default function PolicyFlow({
             [TEST] Log JSON
           </button>
           <button
-            onClick={() => onConfirm?.(buildPolicy(config))}
+            onClick={handleTestDecrypt}
+            className="h-12 px-6 bg-surface-container-high border border-outline-variant/20 text-secondary-ds font-label text-[10px] uppercase tracking-widest hover:text-on-surface hover:border-outline-variant/40 transition-colors cursor-pointer"
+          >
+            [TEST] Decrypt
+          </button>
+          <button
+            onClick={handleConfirm}
             disabled={
+              saving ||
               !(config.privateMode ? config.railgunWallet.trim() : config.destinationWallet.trim())
             }
             className="h-12 px-8 bg-primary-container text-on-primary-container font-headline font-bold uppercase tracking-widest text-sm hover:bg-white hover:text-surface transition-all flex items-center gap-3 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-primary-container disabled:hover:text-on-primary-container"
           >
             Confirm Policy
-            <ArrowRight className="size-4" />
+            {saving ? <Loader2 className="size-4 animate-spin" /> : <ArrowRight className="size-4" />}
           </button>
         </div>
       </div>

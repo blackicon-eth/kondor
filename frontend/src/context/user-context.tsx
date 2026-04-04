@@ -1,8 +1,11 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { usePrivy } from "@privy-io/react-auth";
+import { useWallets } from "@privy-io/react-auth";
 import ky from "ky";
+import { decryptPolicy, ENCRYPTION_SIGN_MESSAGE } from "@/lib/policies/encrypt";
+import type { PolicyJson, PolicyToken } from "@/lib/policies/utils";
 
 type User = {
   seedAddress: string;
@@ -21,6 +24,7 @@ type UserContextType = {
   refetch: () => Promise<void>;
   completedOnboarding: boolean;
   completeOnboarding: () => void;
+  userPolicies: PolicyJson | null;
 };
 
 const UserContext = createContext<UserContextType>({
@@ -29,14 +33,17 @@ const UserContext = createContext<UserContextType>({
   refetch: async () => {},
   completedOnboarding: false,
   completeOnboarding: () => {},
+  userPolicies: null,
 });
 
 const ONBOARDING_KEY = "kondor:onboarding";
 
 export function UserProvider({ children }: { children: React.ReactNode }) {
   const { ready, authenticated, user: privyUser, getAccessToken } = usePrivy();
+  const { wallets } = useWallets();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [cachedSignature, setCachedSignature] = useState<string | null>(null);
   const [completedOnboarding, setCompletedOnboarding] = useState(() => {
     if (typeof window === "undefined") return false;
     const value = localStorage.getItem(ONBOARDING_KEY);
@@ -81,10 +88,10 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
         })
         .json<User>();
       setUser(data);
+      // loading stays true until signature is cached
     } catch (e) {
       console.error("[user-context] Failed to fetch user:", e);
       setUser(null);
-    } finally {
       setLoading(false);
     }
   }, [authenticated, privyUser, getAccessToken]);
@@ -96,9 +103,59 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     }
   }, [ready, fetchUser]);
 
+  // Sign once to derive the encryption key when wallet is available
+  useEffect(() => {
+    if (!authenticated || cachedSignature) return;
+    const wallet = wallets.find((w) => w.walletClientType === "privy");
+    if (!wallet) return;
+
+    wallet.sign(ENCRYPTION_SIGN_MESSAGE).then((sig) => {
+      setCachedSignature(sig);
+      setLoading(false);
+    }).catch((e) => {
+      console.error("[user-context] Failed to sign for key derivation:", e);
+      setLoading(false);
+    });
+  }, [authenticated, wallets, cachedSignature]);
+
+  // If not authenticated, loading is done after user fetch (no signature needed)
+  useEffect(() => {
+    if (ready && !authenticated) {
+      setLoading(false);
+    }
+  }, [ready, authenticated]);
+
+  // Decrypt user policies whenever user data or signature changes
+  const userPolicies = useMemo<PolicyJson | null>(() => {
+    if (!user || !cachedSignature) return null;
+
+    try {
+      const textRecords = JSON.parse(user.textRecords || "{}");
+      const policyStr = textRecords["kondor-policy"];
+      if (!policyStr) return null;
+
+      const encrypted = JSON.parse(policyStr);
+      const crePublicKey = process.env.NEXT_PUBLIC_CRE_PUBLIC_KEY;
+      if (!crePublicKey) return null;
+
+      const decryptedTokens = decryptPolicy(encrypted.tokens, cachedSignature, crePublicKey);
+
+      return {
+        destinationChain: encrypted.destinationChain,
+        isRailgun: encrypted.isRailgun,
+        isOfframp: encrypted.isOfframp,
+        forwardTo: encrypted.forwardTo,
+        tokens: decryptedTokens,
+      };
+    } catch (e) {
+      console.error("[user-context] Failed to decrypt policies:", e);
+      return null;
+    }
+  }, [user, cachedSignature]);
+
   return (
     <UserContext.Provider
-      value={{ user, loading, refetch: fetchUser, completedOnboarding, completeOnboarding }}
+      value={{ user, loading, refetch: fetchUser, completedOnboarding, completeOnboarding, userPolicies }}
     >
       {children}
     </UserContext.Provider>

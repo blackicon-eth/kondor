@@ -234,7 +234,7 @@ export default function Onboarding() {
                 <div className="absolute bottom-0 right-0 w-8 h-8 border-b-2 border-r-2 border-primary-container/40 pointer-events-none z-20" />
 
                 <div className="flex bg-surface-container-lowest border border-outline-variant/15 p-3">
-                  <PolicyFlow onConfirm={handlePolicyConfirm} />
+                  <PolicyFlow onConfirm={handlePolicyConfirm} ensName={user?.ensSubdomain ?? ""} />
                 </div>
               </div>
             </motion.div>
