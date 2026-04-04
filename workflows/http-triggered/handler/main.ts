@@ -15,7 +15,7 @@ import {
   type HTTPSendRequester,
   type HTTPPayload,
 } from "@chainlink/cre-sdk";
-import { encodeAbiParameters, parseAbiParameters, keccak256, toHex, type Hex } from "viem";
+import { encodeAbiParameters, parseAbiParameters, type Hex } from "viem";
 import {
   decrypt,
   ed25519PrivToX25519,
@@ -154,66 +154,69 @@ function resolveSepoliaAddress(symbol: string): string {
 // ---------------------------------------------------------------------------
 
 export const onHttpTrigger = (runtime: Runtime<Config>, payload: HTTPPayload): string => {
-  // --- 1. Parse intent (decrypt if needed) ---
+  // --- 1. Parse envelope & decrypt conditions ---
   const inputBytes = payload.input;
   let body = "";
   if (inputBytes && inputBytes.length > 0) {
     body = new TextDecoder().decode(inputBytes);
   }
   runtime.log("HTTP trigger received");
-  const rawInput = body.trim();
 
-  let parsedInput: unknown;
-  try {
-    parsedInput = JSON.parse(rawInput);
-  } catch {
-    parsedInput = undefined;
-  }
-
-  const envelope = parsedInput as {
-    eventChain?: string;
-    destinationChain?: string;
-    sender?: string;
-    subnameString?: string;
+  const envelope = JSON.parse(body.trim()) as {
+    sender: string;
+    salt: string;
+    chain: string;
+    destinationChain: string;
+    inputToken: string;
+    inputAmount: number;
+    inputDecimals: number;
+    hashedOwner: string;
+    isRailgun?: boolean;
+    isOfframp?: boolean;
+    forwardTo?: string;
     ciphertext?: string;
-  } | undefined;
+    // plaintext fallback fields
+    conditions?: ConditionBranch[];
+    elseActions?: Action[];
+  };
 
-  const wrappedCiphertext =
-    envelope && typeof envelope.ciphertext === "string" ? envelope.ciphertext.trim() : undefined;
-  const encryptedInput = isEncrypted(rawInput) ? rawInput : wrappedCiphertext;
+  let conditions: ConditionBranch[];
+  let elseActions: Action[];
 
-  let intent: Intent;
-  if (encryptedInput) {
-    runtime.log("Encrypted payload detected; decrypting with service key");
+  if (envelope.ciphertext && isEncrypted(envelope.ciphertext)) {
+    runtime.log("Decrypting conditions ciphertext");
     const servicePrivHex = runtime.getSecret({ id: "EDDSA_PRIVATE_KEY" }).result().value.trim();
     if (!servicePrivHex) {
       throw new Error("EDDSA_PRIVATE_KEY secret is not configured");
     }
     const servicePrivEd = hexToBytes(servicePrivHex);
     const servicePrivX = ed25519PrivToX25519(servicePrivEd);
-    const decryptedBody = decrypt(encryptedInput, servicePrivX);
-    const tokenIntent = JSON.parse(decryptedBody);
-
-    // sender comes from the envelope (outside the cipher), not from the encrypted payload
-    const sender = envelope?.sender ?? tokenIntent.sender;
-
-    intent = {
-      ...tokenIntent,
-      chain: envelope?.eventChain ?? tokenIntent.chain,
-      destinationChain: envelope?.destinationChain ?? tokenIntent.destinationChain,
-      salt: tokenIntent.salt ?? envelope?.subnameString ?? tokenIntent.subnameString,
-      sender,
-    };
-  } else if (parsedInput && typeof parsedInput === "object") {
-    intent = parsedInput as Intent;
+    const decrypted = JSON.parse(decrypt(envelope.ciphertext, servicePrivX));
+    conditions = decrypted.conditions;
+    elseActions = decrypted.elseActions;
   } else {
-    intent = JSON.parse(rawInput);
+    // Plaintext fallback (for testing without encryption)
+    conditions = envelope.conditions ?? [];
+    elseActions = envelope.elseActions ?? [];
   }
 
-  // Resolve salt: use explicit salt if provided, otherwise hash subnameString for backwards compat
-  const salt: Hex = intent.salt
-    ? (intent.salt as Hex)
-    : keccak256(toHex(intent.subnameString ?? ""));
+  const intent: Intent = {
+    chain: envelope.chain,
+    destinationChain: envelope.destinationChain,
+    inputToken: envelope.inputToken,
+    inputAmount: envelope.inputAmount,
+    inputDecimals: envelope.inputDecimals,
+    salt: envelope.salt,
+    sender: envelope.sender,
+    forwardTo: envelope.forwardTo,
+    hashedOwner: envelope.hashedOwner,
+    isRailgun: !!envelope.isRailgun,
+    isOfframp: !!envelope.isOfframp,
+    conditions,
+    elseActions,
+  };
+
+  const salt: Hex = intent.salt as Hex;
 
   // Derive receiver: if isRailgun or isOfframp, receiver = sender (self)
   // Otherwise use forwardTo (explicit receiver)

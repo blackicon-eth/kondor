@@ -1,0 +1,217 @@
+{
+  "destinationChain": "ethereum-sepolia",
+  "isRailgun": true,
+  "isOfframp": false,
+  "tokens": [
+    {
+      "inputToken": "USDC",
+      "inputDecimals": 6,
+      "conditions": [
+        {
+          "checks": [
+            {
+              "token": "WETH",
+              "operator": "<",
+              "threshold": 3000
+            },
+            {
+              "token": "WETH",
+              "operator": ">",
+              "threshold": 1000
+            }
+          ],
+          "actions": [
+            {
+              "actionType": "swap",
+              "outputToken": "WETH",
+              "percent": 10
+            },
+            {
+              "actionType": "supply",
+              "outputToken": "aBasUSDC",
+              "percent": 40
+            },
+            {
+              "actionType": "swap",
+              "outputToken": "LINK",
+              "percent": 50
+            }
+          ]
+        },
+        {
+          "checks": [
+            {
+              "token": "WETH",
+              "operator": "<",
+              "threshold": 2000
+            },
+            {
+              "token": "LINK",
+              "operator": "<",
+              "threshold": 8
+            }
+          ],
+          "actions": [
+            {
+              "actionType": "swap",
+              "outputToken": "LINK",
+              "percent": 80
+            }
+          ]
+        }
+      ],
+      "elseActions": [
+        {
+          "actionType": "supply",
+          "outputToken": "aBasWETH",
+          "percent": 90
+        },
+        {
+          "actionType": "swap",
+          "outputToken": "WETH",
+          "percent": 10
+        }
+      ]
+    },
+    {
+      "inputToken": "EURe",
+      "inputDecimals": 18,
+      "conditions": [
+        {
+          "checks": [
+            {
+              "token": "WETH",
+              "operator": "<",
+              "threshold": 3000
+            },
+            {
+              "token": "WETH",
+              "operator": ">",
+              "threshold": 1000
+            }
+          ],
+          "actions": [
+            {
+              "actionType": "swap",
+              "outputToken": "WETH",
+              "percent": 10
+            },
+            {
+              "actionType": "supply",
+              "outputToken": "aBasUSDC",
+              "percent": 40
+            },
+            {
+              "actionType": "swap",
+              "outputToken": "LINK",
+              "percent": 50
+            }
+          ]
+        },
+        {
+          "checks": [
+            {
+              "token": "WETH",
+              "operator": "<",
+              "threshold": 2000
+            },
+            {
+              "token": "LINK",
+              "operator": "<",
+              "threshold": 8
+            }
+          ],
+          "actions": [
+            {
+              "actionType": "swap",
+              "outputToken": "LINK",
+              "percent": 80
+            }
+          ]
+        }
+      ],
+      "elseActions": [
+        {
+          "actionType": "supply",
+          "outputToken": "aBasWETH",
+          "percent": 90
+        },
+        {
+          "actionType": "swap",
+          "outputToken": "WETH",
+          "percent": 10
+        }
+      ]
+    },
+    {
+      "inputToken": "DAI",
+      "inputDecimals": 18,
+      "conditions": [
+        {
+          "checks": [
+            {
+              "token": "WETH",
+              "operator": "<",
+              "threshold": 3000
+            },
+            {
+              "token": "WETH",
+              "operator": ">",
+              "threshold": 1000
+            }
+          ],
+          "actions": [
+            {
+              "actionType": "swap",
+              "outputToken": "WETH",
+              "percent": 10
+            },
+            {
+              "actionType": "supply",
+              "outputToken": "aBasUSDC",
+              "percent": 40
+            },
+            {
+              "actionType": "swap",
+              "outputToken": "LINK",
+              "percent": 50
+            }
+          ]
+        },
+        {
+          "checks": [
+            {
+              "token": "WETH",
+              "operator": "<",
+              "threshold": 2000
+            },
+            {
+              "token": "LINK",
+              "operator": "<",
+              "threshold": 8
+            }
+          ],
+          "actions": [
+            {
+              "actionType": "swap",
+              "outputToken": "LINK",
+              "percent": 80
+            }
+          ]
+        }
+      ],
+      "elseActions": [
+        {
+          "actionType": "supply",
+          "outputToken": "aBasWETH",
+          "percent": 90
+        },
+        {
+          "actionType": "swap",
+          "outputToken": "WETH",
+          "percent": 10
+        }
+      ]
+    }
+  ]
+}

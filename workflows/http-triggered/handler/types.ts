@@ -29,10 +29,9 @@ export type Intent = {
   inputAmount: number;
   inputDecimals: number;
   salt: string;              // bytes32 hex — CREATE2 salt for the smart account
-  subnameString?: string;     // legacy, will be removed
   sender: string;            // comes from envelope, not from ciphertext
   forwardTo?: string;        // explicit receiver — only used when !isRailgun && !isOfframp
-  hashedOwner: string;         // bytes32 hex — keccak256(abi.encodePacked(ownerAddress))
+  hashedOwner: string;        // bytes32 hex — keccak256(abi.encodePacked(ownerAddress))
   isRailgun: boolean;
   isOfframp: boolean;
   conditions: ConditionBranch[];

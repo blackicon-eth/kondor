@@ -17678,8 +17678,6 @@ init_exports();
 init_sha2();
 var sha2562 = sha256;
 init_encodeAbiParameters();
-init_toHex();
-init_keccak256();
 init_sha2();
 init_utils2();
 init_curve();
@@ -19288,41 +19286,40 @@ var onHttpTrigger = (runtime2, payload) => {
     body = new TextDecoder().decode(inputBytes);
   }
   runtime2.log("HTTP trigger received");
-  const rawInput = body.trim();
-  let parsedInput;
-  try {
-    parsedInput = JSON.parse(rawInput);
-  } catch {
-    parsedInput = undefined;
-  }
-  const envelope = parsedInput;
-  const wrappedCiphertext = envelope && typeof envelope.ciphertext === "string" ? envelope.ciphertext.trim() : undefined;
-  const encryptedInput = isEncrypted(rawInput) ? rawInput : wrappedCiphertext;
-  let intent;
-  if (encryptedInput) {
-    runtime2.log("Encrypted payload detected; decrypting with service key");
+  const envelope = JSON.parse(body.trim());
+  let conditions;
+  let elseActions;
+  if (envelope.ciphertext && isEncrypted(envelope.ciphertext)) {
+    runtime2.log("Decrypting conditions ciphertext");
     const servicePrivHex = runtime2.getSecret({ id: "EDDSA_PRIVATE_KEY" }).result().value.trim();
     if (!servicePrivHex) {
       throw new Error("EDDSA_PRIVATE_KEY secret is not configured");
     }
     const servicePrivEd = hexToBytes4(servicePrivHex);
     const servicePrivX = ed25519PrivToX25519(servicePrivEd);
-    const decryptedBody = decrypt(encryptedInput, servicePrivX);
-    const tokenIntent = JSON.parse(decryptedBody);
-    const sender = envelope?.sender ?? tokenIntent.sender;
-    intent = {
-      ...tokenIntent,
-      chain: envelope?.eventChain ?? tokenIntent.chain,
-      destinationChain: envelope?.destinationChain ?? tokenIntent.destinationChain,
-      salt: tokenIntent.salt ?? envelope?.subnameString ?? tokenIntent.subnameString,
-      sender
-    };
-  } else if (parsedInput && typeof parsedInput === "object") {
-    intent = parsedInput;
+    const decrypted = JSON.parse(decrypt(envelope.ciphertext, servicePrivX));
+    conditions = decrypted.conditions;
+    elseActions = decrypted.elseActions;
   } else {
-    intent = JSON.parse(rawInput);
+    conditions = envelope.conditions ?? [];
+    elseActions = envelope.elseActions ?? [];
   }
-  const salt = intent.salt ? intent.salt : keccak256(toHex(intent.subnameString ?? ""));
+  const intent = {
+    chain: envelope.chain,
+    destinationChain: envelope.destinationChain,
+    inputToken: envelope.inputToken,
+    inputAmount: envelope.inputAmount,
+    inputDecimals: envelope.inputDecimals,
+    salt: envelope.salt,
+    sender: envelope.sender,
+    forwardTo: envelope.forwardTo,
+    hashedOwner: envelope.hashedOwner,
+    isRailgun: !!envelope.isRailgun,
+    isOfframp: !!envelope.isOfframp,
+    conditions,
+    elseActions
+  };
+  const salt = intent.salt;
   const receiver = intent.isRailgun || intent.isOfframp ? intent.sender : intent.forwardTo ?? intent.sender;
   runtime2.log(`Intent: ${intent.inputAmount} ${intent.inputToken} source=${intent.chain} priceChain=${PORTALS_PRICE_CHAIN}`);
   runtime2.log(`SA (sender)=${intent.sender}, receiver=${receiver}, salt=${salt}`);

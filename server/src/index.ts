@@ -297,15 +297,27 @@ async function bootstrap(): Promise<void> {
   });
 
   // Encrypt a policy payload and store it as "kondor-policy" text record
+  // Each token's conditions/elseActions are encrypted individually
   app.post("/subdomains/update-policy", async (req, res) => {
     try {
       const { name, policy } = req.body as {
         name?: string;
-        policy?: Record<string, unknown>;
+        policy?: {
+          destinationChain: string;
+          isRailgun: boolean;
+          isOfframp: boolean;
+          forwardTo?: string;
+          tokens: Array<{
+            inputToken: string;
+            inputDecimals: number;
+            conditions: unknown[];
+            elseActions: unknown[];
+          }>;
+        };
       };
 
-      if (!name || !policy) {
-        res.status(400).json({ ok: false, error: "name and policy are required" });
+      if (!name || !policy || !policy.tokens?.length) {
+        res.status(400).json({ ok: false, error: "name and policy with tokens are required" });
         return;
       }
 
@@ -315,9 +327,7 @@ async function bootstrap(): Promise<void> {
         return;
       }
 
-      // CRE's public EdDSA key (the recipient that will decrypt)
       const crePubHex = process.env.ASYM_KEY_EDDSA25519?.trim();
-      // Server's private EdDSA key (the sender doing the encryption)
       const serverPrivHex = process.env.ASYM_PRIV_KEY_EDDSA25519?.trim();
 
       if (!crePubHex || !serverPrivHex) {
@@ -325,19 +335,35 @@ async function bootstrap(): Promise<void> {
         return;
       }
 
-      // Convert Ed25519 keys → X25519 for DH
       const crePubX = ed25519PubToX25519(hexToBytes(crePubHex));
       const serverPrivX = ed25519PrivToX25519(hexToBytes(serverPrivHex));
 
-      // Encrypt the policy JSON
-      const ciphertext = encrypt(JSON.stringify(policy), serverPrivX, crePubX);
+      // Encrypt conditions/elseActions per token, keep metadata plaintext
+      const storedTokens = policy.tokens.map((token) => {
+        const plaintext = JSON.stringify({
+          conditions: token.conditions,
+          elseActions: token.elseActions,
+        });
+        return {
+          inputToken: token.inputToken,
+          inputDecimals: token.inputDecimals,
+          ciphertext: encrypt(plaintext, serverPrivX, crePubX),
+        };
+      });
 
-      // Store as "kondor-policy" text record
+      const storedPolicy = {
+        destinationChain: policy.destinationChain,
+        isRailgun: policy.isRailgun,
+        isOfframp: policy.isOfframp,
+        forwardTo: policy.forwardTo,
+        tokens: storedTokens,
+      };
+
       await updateSubdomainTextRecords(name, [
-        { key: "kondor-policy", value: ciphertext },
+        { key: "kondor-policy", value: JSON.stringify(storedPolicy) },
       ]);
 
-      res.json({ ok: true, ciphertext });
+      res.json({ ok: true, policy: storedPolicy });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       res.status(500).json({ ok: false, error: message });
