@@ -103,7 +103,7 @@ export default function Navbar() {
         </div>
         {showNavigation && (
           <div className="hidden md:flex items-center gap-8">
-            <NavLink href="/dashboard" active={pathname === "/dashboard"}>
+            <NavLink href="/dashboard" active={pathname.startsWith("/dashboard")}>
               Dashboard
             </NavLink>
             <NavLink href="/profile" active={pathname === "/profile"}>

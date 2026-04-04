@@ -5,6 +5,7 @@ const envSchema = z.object({
   TURSO_AUTH_TOKEN: z.string().min(1, "TURSO_AUTH_TOKEN is required"),
   PRIVY_APP_ID: z.string().min(1, "PRIVY_APP_ID is required"),
   PRIVY_APP_SECRET: z.string().min(1, "PRIVY_APP_SECRET is required"),
+  CRE_PUBLIC_KEY: z.string().min(1, "CRE_PUBLIC_KEY is required"),
 });
 
 export const env = envSchema.parse({
@@ -12,4 +13,5 @@ export const env = envSchema.parse({
   TURSO_AUTH_TOKEN: process.env.TURSO_AUTH_TOKEN,
   PRIVY_APP_ID: process.env.NEXT_PUBLIC_PRIVY_APP_ID,
   PRIVY_APP_SECRET: process.env.PRIVY_APP_SECRET,
+  CRE_PUBLIC_KEY: process.env.NEXT_PUBLIC_CRE_PUBLIC_KEY,
 });

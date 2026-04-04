@@ -40,8 +40,6 @@ const TOKEN_DECIMALS: Record<string, number> = {
   WBTC: 8,
   LINK: 18,
   UNI: 18,
-  DAI: 18,
-  EURe: 18,
 };
 
 // ─── Flow config types (from the UI) ─────────────────────────────────────────
@@ -111,6 +109,55 @@ function flowConfigToToken(config: FlowConfig): PolicyToken {
   return token;
 }
 
+// ─── Reverse mapping: PolicyJson → FlowConfig ───────────────────────────────
+
+function actionsToOutcome(actions: PolicyAction[]): OutcomeConfig {
+  const swap = actions.find((a) => a.actionType === "swap");
+  const lend = actions.find((a) => a.actionType === "lend");
+  const swapPct = swap?.percent ?? 0;
+  const aavePct = lend?.percent ?? 0;
+  return {
+    swapToken: swap?.outputToken ?? "WETH",
+    swapPct,
+    aavePct,
+    destPct: Math.max(0, 100 - swapPct - aavePct),
+  };
+}
+
+/**
+ * Converts a decrypted PolicyJson into a FlowConfig for a specific input token.
+ * Returns null if the token is not found in the policy.
+ */
+export function policyToFlowConfig(
+  policy: PolicyJson,
+  inputToken: string,
+  zkAddress?: string | null,
+  forwardTo?: string | null,
+): FlowConfig | null {
+  const token = policy.tokens.find((t) => t.inputToken === inputToken);
+  if (!token) return null;
+
+  const hasBranching = token.conditions.length > 0;
+  const firstCondition = token.conditions[0];
+  const firstCheck = firstCondition?.checks[0];
+
+  return {
+    sourceToken: token.inputToken,
+    branchingEnabled: hasBranching,
+    condition: {
+      token: firstCheck?.token ?? "WETH",
+      operator: (firstCheck?.operator ?? ">") as "<" | ">",
+      amount: firstCheck?.threshold ?? 3000,
+    },
+    outcomeIf: hasBranching ? actionsToOutcome(firstCondition.actions) : { swapToken: "WETH", swapPct: 25, aavePct: 25, destPct: 50 },
+    outcomeElse: actionsToOutcome(token.elseActions),
+    outcome: hasBranching ? { swapToken: "WETH", swapPct: 25, aavePct: 25, destPct: 50 } : actionsToOutcome(token.elseActions),
+    destinationWallet: forwardTo ?? "",
+    railgunWallet: zkAddress ?? "",
+    privateMode: policy.isRailgun,
+  };
+}
+
 // ─── Public API ──────────────────────────────────────────────────────────────
 
 /**
@@ -138,6 +185,46 @@ export function upsertPolicyToken(
  * Builds a complete policy JSON from a flow config and optional existing tokens.
  * The flow config's sourceToken entry is upserted into the tokens array.
  */
+// ─── Encrypted policy types ──────────────────────────────────────────────────
+
+export type EncryptedPolicyToken = {
+  inputToken: string;
+  inputDecimals: number;
+  ciphertext: string;
+};
+
+export type EncryptedPolicy = {
+  destinationChain: string;
+  isRailgun: boolean;
+  isOfframp: boolean;
+  forwardTo: string;
+  tokens: EncryptedPolicyToken[];
+};
+
+export type TextRecord = {
+  description: string;
+  railgunAddress?: string;
+  "kondor-policy": string;
+};
+
+/**
+ * Builds a text record object from an encrypted policy.
+ * Merges with existing text records to preserve other fields.
+ */
+export function buildTextRecord(
+  encryptedPolicy: EncryptedPolicy,
+  ensName: string,
+  railgunAddress: string,
+  existingTextRecords: Partial<TextRecord> = {},
+): TextRecord {
+  return {
+    ...existingTextRecords,
+    description: `${ensName}'s policy`,
+    railgunAddress,
+    "kondor-policy": JSON.stringify(encryptedPolicy),
+  };
+}
+
 export function buildPolicy(
   config: FlowConfig,
   existingTokens: PolicyToken[] = []

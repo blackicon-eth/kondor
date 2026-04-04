@@ -1,98 +1,61 @@
 "use client";
 
-import { useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
-import PolicyFlow from "@/components/policy-flow";
-import { toast } from "sonner";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { motion } from "framer-motion";
+import { Plus, Layers } from "lucide-react";
+import AddTokenModal from "@/components/add-token-modal";
+import { useUser } from "@/context/user-context";
 
-const TOKENS = ["USDC", "WBTC", "LINK", "UNI"] as const;
+export default function DashboardIndex() {
+  const router = useRouter();
+  const { userPolicies } = useUser();
+  const [modalOpen, setModalOpen] = useState(false);
 
-const stagger = {
-  hidden: {},
-  show: { transition: { staggerChildren: 0.08, delayChildren: 0.1 } },
-};
+  const existingTokens = userPolicies?.tokens.map((t) => t.inputToken) ?? [];
 
-const fadeUp = {
-  hidden: { opacity: 0, y: 16 },
-  show: {
-    opacity: 1,
-    y: 0,
-    transition: { duration: 0.5, ease: [0.22, 1, 0.36, 1] as const },
-  },
-};
+  // Redirect to first token if policies exist
+  useEffect(() => {
+    if (existingTokens.length > 0) {
+      router.replace(`/dashboard/${existingTokens[0]}`);
+    }
+  }, [existingTokens, router]);
 
-export default function Dashboard() {
-  const [selectedToken, setSelectedToken] = useState<(typeof TOKENS)[number]>("USDC");
+  // If there are existing tokens, don't render (redirect is happening)
+  if (existingTokens.length > 0) return null;
 
-  function handlePolicyUpdate(policy: unknown) {
-    console.log("[Dashboard] Policy updated:", JSON.stringify(policy, null, 2));
-    toast.success("Policy updated successfully");
-  }
-
+  // Empty state
   return (
-    <div className="flex justify-center items-start w-full h-full">
+    <div className="flex justify-center items-center w-full h-full">
       <motion.div
-        className="w-full max-w-[1500px] mx-auto px-8 py-12 flex flex-col gap-8"
-        variants={stagger}
-        initial="hidden"
-        animate="show"
+        className="flex flex-col items-center gap-6"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
       >
-        {/* Header */}
-        <motion.div variants={fadeUp} className="flex items-start justify-between w-full">
-          <div>
-            <h1 className="text-6xl md:text-8xl font-headline font-black text-on-surface leading-[0.9] tracking-tighter mb-5">
-              DASHBOARD<span className="text-primary-container">_</span>
-            </h1>
-            <p className="text-secondary-ds text-base font-body max-w-2xl leading-relaxed">
-              Review and manage your assets policies.
-            </p>
-          </div>
-
-          {/* Token select */}
-          <Select value={selectedToken} onValueChange={(v) => setSelectedToken(v as (typeof TOKENS)[number])}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent align="end">
-              {TOKENS.map((token) => (
-                <SelectItem key={token} value={token}>
-                  {token}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </motion.div>
-
-        {/* Main HUD Panel */}
-        <motion.div variants={fadeUp} className="relative">
-          {/* HUD frame corners */}
-          <div className="absolute top-0 left-0 w-8 h-8 border-t-2 border-l-2 border-primary-container/40 pointer-events-none z-20" />
-          <div className="absolute top-0 right-0 w-8 h-8 border-t-2 border-r-2 border-primary-container/40 pointer-events-none z-20" />
-          <div className="absolute bottom-0 left-0 w-8 h-8 border-b-2 border-l-2 border-primary-container/40 pointer-events-none z-20" />
-          <div className="absolute bottom-0 right-0 w-8 h-8 border-b-2 border-r-2 border-primary-container/40 pointer-events-none z-20" />
-
-          {/* Policy Flow Board */}
-          <div className="bg-surface-container-lowest border border-outline-variant/15 p-6">
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={selectedToken}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.3, ease: "easeInOut" }}
-              >
-                <PolicyFlow onConfirm={handlePolicyUpdate} inputToken={selectedToken} />
-              </motion.div>
-            </AnimatePresence>
-          </div>
-        </motion.div>
+        <div className="size-16 rounded-full bg-surface-container-high border border-outline-variant/20 flex items-center justify-center">
+          <Layers className="size-8 text-secondary-ds" />
+        </div>
+        <div className="text-center">
+          <h2 className="font-headline font-bold text-2xl text-on-surface tracking-tight mb-2">
+            No policies yet
+          </h2>
+          <p className="text-secondary-ds font-body text-sm max-w-sm">
+            Create your first token policy to start automating your incoming crypto.
+          </p>
+        </div>
+        <button
+          onClick={() => setModalOpen(true)}
+          className="h-12 px-8 bg-primary-container text-on-primary-container font-headline font-bold uppercase tracking-widest text-sm hover:bg-white hover:text-surface transition-all flex items-center gap-3 cursor-pointer"
+        >
+          <Plus className="size-4" />
+          Create First Policy
+        </button>
+        <AddTokenModal
+          open={modalOpen}
+          onOpenChange={setModalOpen}
+          existingTokens={existingTokens}
+        />
       </motion.div>
     </div>
   );
