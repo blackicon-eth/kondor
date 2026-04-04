@@ -2,9 +2,8 @@ import "./env";
 import express from "express";
 import cors from "cors";
 import { AlchemyWebhookManager } from "./alchemyWebhookManager";
-import { loadWatchedAddresses } from "./addressStore";
+import { loadWatchedAddresses, saveWatchedAddresses } from "./addressStore";
 import { config } from "./config";
-import { syncAlchemyWebhookAddresses } from "./sync";
 import { createAlchemyWebhookHandler } from "./webhookHandler";
 import { createBatchSwap5792, type BatchSwap5792Request } from "./uniswap";
 import {
@@ -56,15 +55,23 @@ async function bootstrap(): Promise<void> {
     });
 
     watchedAddresses = new Set(await loadWatchedAddresses());
+    webhookId = config.webhookId;
 
-    try {
-      const syncResult = await syncAlchemyWebhookAddresses(manager);
-      webhookId = syncResult.webhookId;
-      console.log(
-        `[sync] webhook=${syncResult.webhookId} added=${syncResult.added} removed=${syncResult.removed} total=${syncResult.total}`
-      );
-    } catch (err) {
-      console.warn("[sync] Initial sync failed:", err);
+    if (!webhookId && config.autoCreateWebhook && config.webhookUrl) {
+      try {
+        webhookId = await manager.createAddressActivityWebhook({
+          webhookUrl: config.webhookUrl,
+          webhookName: config.webhookName,
+          watchedAddresses: Array.from(watchedAddresses),
+        });
+        console.log(`[alchemy] created webhook ${webhookId}`);
+      } catch (err) {
+        console.warn("[alchemy] failed to auto-create webhook:", err);
+      }
+    }
+
+    if (!webhookId) {
+      console.warn("[alchemy] WEBHOOK_ID is missing, new stealth addresses will not be pushed");
     }
 
     webhookDeps = { watchedAddressSet: watchedAddresses };
@@ -91,6 +98,7 @@ async function bootstrap(): Promise<void> {
       });
 
       watchedAddresses.add(normalized);
+      await saveWatchedAddresses(Array.from(watchedAddresses));
       if (webhookDeps) {
         webhookDeps.watchedAddressSet = watchedAddresses;
       }
@@ -139,28 +147,6 @@ async function bootstrap(): Promise<void> {
   // ── JSON body parser for remaining routes ───────────────────────
 
   app.use(express.json());
-
-  // ── Sync addresses ──────────────────────────────────────────────
-
-  app.post("/sync-addresses", async (_req, res) => {
-    try {
-      if (!manager) {
-        res.status(503).json({ ok: false, error: "Alchemy is not configured" });
-        return;
-      }
-
-      const result = await syncAlchemyWebhookAddresses(manager);
-      webhookId = result.webhookId;
-      watchedAddresses = new Set(await loadWatchedAddresses());
-      if (webhookDeps) {
-        webhookDeps.watchedAddressSet = watchedAddresses;
-      }
-      res.json({ ok: true, result });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      res.status(500).json({ ok: false, error: message });
-    }
-  });
 
   // ── Uniswap batch quote + swap_5792 wrapper ─────────────────────
 
@@ -271,21 +257,6 @@ async function bootstrap(): Promise<void> {
 
       await registerSubdomain(name, owner, seedAddress, text, addresses);
 
-      // Sync webhook addresses after registration
-      if (manager) {
-        try {
-          const syncResult = await syncAlchemyWebhookAddresses(manager);
-          webhookId = syncResult.webhookId;
-          watchedAddresses = new Set(await loadWatchedAddresses());
-          if (webhookDeps) {
-            webhookDeps.watchedAddressSet = watchedAddresses;
-          }
-          console.log(`[register] sync complete: added=${syncResult.added} total=${syncResult.total}`);
-        } catch (syncErr) {
-          console.warn("[register] Sync addresses failed:", syncErr);
-        }
-      }
-
       res.json({ ok: true });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -321,31 +292,22 @@ async function bootstrap(): Promise<void> {
 
   // ── Start ───────────────────────────────────────────────────────
 
-  if (manager) {
-    setInterval(async () => {
-      try {
-        const removed = await pruneStaleStealthAddresses();
-        if (removed > 0) {
-          const syncResult = await syncAlchemyWebhookAddresses(manager);
-          webhookId = syncResult.webhookId;
-          watchedAddresses = new Set(await loadWatchedAddresses());
-          if (webhookDeps) {
-            webhookDeps.watchedAddressSet = watchedAddresses;
-          }
-          console.log(`[cleanup] pruned=${removed}, webhook total=${syncResult.total}`);
-        }
-      } catch (error) {
-        console.warn("[cleanup] failed:", error);
+  setInterval(async () => {
+    try {
+      const removed = await pruneStaleStealthAddresses();
+      if (removed > 0) {
+        console.log(`[cleanup] pruned stale stealth addresses=${removed}`);
       }
-    }, 60_000);
-  }
+    } catch (error) {
+      console.warn("[cleanup] failed:", error);
+    }
+  }, 60_000);
 
   app.listen(config.port, () => {
     console.log(`express server running on http://localhost:${config.port}`);
     console.log("endpoints:");
     console.log("  GET  /health");
     console.log("  POST /webhooks/alchemy");
-    console.log("  POST /sync-addresses");
     console.log("  POST /swap_5792");
     console.log("  GET  /gateway/:sender/:data");
     console.log("  GET  /subdomains");

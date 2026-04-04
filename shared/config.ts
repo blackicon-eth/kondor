@@ -14,4 +14,6 @@ export const config = {
   ensDomain: optional("ENS_DOMAIN"),
   gatewaySignerPrivateKey: optional("GATEWAY_SIGNER_PRIVATE_KEY"),
   hasAlchemyConfig: Boolean(optional("ALCHEMY_API_KEY") && optional("ALCHEMY_AUTH_TOKEN")),
+  uniswapApiKey: optional("UNISWAP_API_KEY"),
+  hasUniswapConfig: Boolean(optional("UNISWAP_API_KEY")),
 };
