@@ -3,6 +3,9 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
+import { useUser } from "@/context/user-context";
+import { usePrivy } from "@privy-io/react-auth";
+import ky from "ky";
 import {
   Shield,
   Landmark,
@@ -35,8 +38,14 @@ const fadeUp = {
 };
 
 export default function Profile() {
-  const [zkAddress, setZkAddress] = useState("");
+  const { userZkAddress, refetch } = useUser();
+  const { user: privyUser, getAccessToken } = usePrivy();
+  const [zkAddress, setZkAddress] = useState(userZkAddress ?? "");
   const [updating, setUpdating] = useState(false);
+
+  const seedAddress = privyUser?.linkedAccounts.find(
+    (a) => a.type === "wallet" && a.walletClientType === "privy"
+  );
 
   async function handleUpdateZkAddress() {
     const trimmed = zkAddress.trim();
@@ -48,12 +57,24 @@ export default function Profile() {
       toast.error("Invalid zkAddress format — must start with 0zk");
       return;
     }
+    if (!seedAddress || !("address" in seedAddress)) {
+      toast.error("Wallet not available");
+      return;
+    }
     setUpdating(true);
     try {
-      // TODO: wire up API route when schema supports zkAddress
-      await new Promise((r) => setTimeout(r, 1000));
+      const token = await getAccessToken();
+      await ky.put("/api/user/text-records", {
+        json: { textRecords: { railgunAddress: trimmed } },
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "x-seed-address": seedAddress.address,
+        },
+      });
+      await refetch();
       toast.success("zkAddress updated successfully");
-    } catch {
+    } catch (e) {
+      console.error("[TEST] Failed to update zkAddress:", e);
       toast.error("Failed to update zkAddress");
     } finally {
       setUpdating(false);
@@ -63,7 +84,7 @@ export default function Profile() {
   return (
     <div className="flex justify-center items-start w-full h-full">
       <motion.div
-        className="w-full max-w-[1500px] mx-auto px-8 py-12"
+        className="w-full max-w-[1650px] mx-auto px-8 py-12"
         variants={stagger}
         initial="hidden"
         animate="show"
@@ -82,7 +103,7 @@ export default function Profile() {
         {/* Protocol Cards Row */}
         <motion.div variants={fadeUp} className="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-8">
           {/* Railgun Address — wider card */}
-          <div className="lg:col-span-7 bg-surface-container border border-outline-variant/10 relative overflow-hidden">
+          <div className="lg:col-span-8 bg-surface-container border border-outline-variant/10 relative overflow-hidden">
             {/* Red left accent bar */}
             <div className="absolute top-0 left-0 w-1 h-full bg-primary-container" />
 
@@ -91,44 +112,83 @@ export default function Profile() {
               <Shield className="size-28 text-primary-container" />
             </div>
 
-            <div className="relative z-10 p-8">
-              <h3 className="font-headline font-bold text-on-surface uppercase tracking-wider text-base mb-1">
-                Railgun zkAddress
-              </h3>
-              <p className="font-label text-[10px] uppercase tracking-widest text-secondary-container mb-6">
-                Your Privacy Layer
-              </p>
+            <div className="flex justify-between items-center w-full p-8 gap-10">
+              {/* Railgun zkAddress section */}
+              <div className="relative z-10 w-full">
+                <h3 className="font-headline font-bold text-on-surface uppercase tracking-wider text-base mb-1">
+                  Railgun zkAddress
+                </h3>
+                <p className="font-label text-[10px] uppercase tracking-widest text-secondary-container mb-6">
+                  Your Privacy Layer
+                </p>
 
-              {/* zkAddress input + Update button */}
-              <div className="flex flex-col sm:flex-row gap-4 items-stretch sm:items-center">
-                <div className="flex items-center gap-3 bg-surface-container-lowest px-5 py-3.5 flex-1 border border-outline-variant/10 group">
-                  <Lock className="size-4 text-secondary-container shrink-0" />
-                  <input
-                    type="text"
-                    value={zkAddress}
-                    onChange={(e) => setZkAddress(e.target.value)}
-                    placeholder="0zk1a2b3c4d...your railgun address"
-                    className="w-full bg-transparent font-label text-sm text-on-surface tracking-wider placeholder:text-secondary-container focus:outline-none"
-                  />
+                {/* zkAddress input + Update button */}
+                <div className="flex flex-row justify-start gap-3 items-center">
+                  <div className="flex items-center gap-3 bg-surface-container-lowest px-5 py-3.5 flex-1 border border-outline-variant/10 group">
+                    <Lock className="size-4 text-secondary-container shrink-0" />
+                    <input
+                      type="text"
+                      value={zkAddress}
+                      onChange={(e) => setZkAddress(e.target.value)}
+                      placeholder="0zk1a2b3c4d...your railgun address"
+                      className="w-full bg-transparent font-label text-sm text-on-surface tracking-wider placeholder:text-secondary-container focus:outline-none"
+                    />
+                  </div>
+                  <button
+                    onClick={handleUpdateZkAddress}
+                    disabled={updating || !zkAddress.trim()}
+                    className="flex items-center justify-center gap-2 bg-primary-container text-on-primary-container px-4 py-3.5 font-headline font-bold uppercase text-[11px] tracking-widest hover:bg-white hover:text-surface transition-all cursor-pointer shrink-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-primary-container disabled:hover:text-on-primary-container"
+                  >
+                    Update
+                    {updating ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : (
+                      <RotateCcw className="size-3.5" />
+                    )}
+                  </button>
                 </div>
-                <button
-                  onClick={handleUpdateZkAddress}
-                  disabled={updating || !zkAddress.trim()}
-                  className="flex items-center justify-center gap-2 bg-primary-container text-on-primary-container px-6 py-3.5 font-headline font-bold uppercase text-[11px] tracking-widest hover:bg-white hover:text-surface transition-all cursor-pointer shrink-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-primary-container disabled:hover:text-on-primary-container"
-                >
-                  Update
-                  {updating ? (
-                    <Loader2 className="size-3.5 animate-spin" />
-                  ) : (
-                    <RotateCcw className="size-3.5" />
-                  )}
-                </button>
+              </div>
+
+              {/* Destination wallet section */}
+              <div className="relative z-10 w-full">
+                <h3 className="font-headline font-bold text-on-surface uppercase tracking-wider text-base mb-1">
+                  Destination Wallet
+                </h3>
+                <p className="font-label text-[10px] uppercase tracking-widest text-secondary-container mb-6">
+                  Your classic wallet address
+                </p>
+
+                {/* zkAddress input + Update button */}
+                <div className="flex flex-row justify-start gap-3 items-center">
+                  <div className="flex items-center gap-3 bg-surface-container-lowest px-5 py-3.5 flex-1 border border-outline-variant/10 group">
+                    <Lock className="size-4 text-secondary-container shrink-0" />
+                    <input
+                      type="text"
+                      value={zkAddress}
+                      onChange={(e) => setZkAddress(e.target.value)}
+                      placeholder="0zk1a2b3c4d...your railgun address"
+                      className="w-full bg-transparent font-label text-sm text-on-surface tracking-wider placeholder:text-secondary-container focus:outline-none"
+                    />
+                  </div>
+                  <button
+                    onClick={handleUpdateZkAddress}
+                    disabled={updating || !zkAddress.trim()}
+                    className="flex items-center justify-center gap-2 bg-primary-container text-on-primary-container px-4 py-3.5 font-headline font-bold uppercase text-[11px] tracking-widest hover:bg-white hover:text-surface transition-all cursor-pointer shrink-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-primary-container disabled:hover:text-on-primary-container"
+                  >
+                    Update
+                    {updating ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : (
+                      <RotateCcw className="size-3.5" />
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
 
           {/* Monerium — narrower card */}
-          <div className="lg:col-span-5 bg-surface-container border border-outline-variant/10 relative overflow-hidden">
+          <div className="lg:col-span-4 bg-surface-container border border-outline-variant/10 relative overflow-hidden">
             {/* Red corner accent */}
             <div
               className="absolute top-0 right-0 w-20 h-20 bg-primary-container"

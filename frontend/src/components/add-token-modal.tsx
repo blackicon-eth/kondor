@@ -47,7 +47,7 @@ export default function AddTokenModal({
               key={token.symbol}
               onClick={() => {
                 onOpenChange(false);
-                router.push(`/new-policy?token=${token.symbol}`);
+                router.push(`/new-policy/${token.symbol}`);
               }}
               className="flex items-center gap-3 px-4 py-3 bg-surface-container-high border border-outline-variant/15 hover:border-primary-container/40 hover:bg-surface-container-highest transition-all cursor-pointer group"
             >

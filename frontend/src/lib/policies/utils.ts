@@ -131,6 +131,8 @@ function actionsToOutcome(actions: PolicyAction[]): OutcomeConfig {
 export function policyToFlowConfig(
   policy: PolicyJson,
   inputToken: string,
+  zkAddress?: string | null,
+  forwardTo?: string | null,
 ): FlowConfig | null {
   const token = policy.tokens.find((t) => t.inputToken === inputToken);
   if (!token) return null;
@@ -150,8 +152,8 @@ export function policyToFlowConfig(
     outcomeIf: hasBranching ? actionsToOutcome(firstCondition.actions) : { swapToken: "WETH", swapPct: 25, aavePct: 25, destPct: 50 },
     outcomeElse: actionsToOutcome(token.elseActions),
     outcome: hasBranching ? { swapToken: "WETH", swapPct: 25, aavePct: 25, destPct: 50 } : actionsToOutcome(token.elseActions),
-    destinationWallet: policy.isRailgun ? "" : policy.forwardTo,
-    railgunWallet: policy.isRailgun ? policy.forwardTo : "",
+    destinationWallet: forwardTo ?? "",
+    railgunWallet: zkAddress ?? "",
     privateMode: policy.isRailgun,
   };
 }
@@ -212,12 +214,13 @@ export type TextRecord = {
 export function buildTextRecord(
   encryptedPolicy: EncryptedPolicy,
   ensName: string,
+  railgunAddress: string,
   existingTextRecords: Partial<TextRecord> = {},
 ): TextRecord {
   return {
     ...existingTextRecords,
     description: `${ensName}'s policy`,
-    railgunAddress: encryptedPolicy.isRailgun ? encryptedPolicy.forwardTo : "",
+    railgunAddress,
     "kondor-policy": JSON.stringify(encryptedPolicy),
   };
 }

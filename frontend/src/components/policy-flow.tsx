@@ -25,12 +25,20 @@ import {
   Minus,
   Plus,
   Loader2,
+  Trash2,
 } from "lucide-react";
 import { TokenIcon } from "@web3icons/react/dynamic";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { buildPolicy, buildTextRecord, policyToFlowConfig, type OutcomeConfig, type FlowConfig } from "@/lib/policies/utils";
+import { buildPolicy, buildTextRecord, policyToFlowConfig, type OutcomeConfig, type FlowConfig, type EncryptedPolicy } from "@/lib/policies/utils";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { useUser } from "@/context/user-context";
 import { encryptPolicy, decryptPolicy, ENCRYPTION_SIGN_MESSAGE } from "@/lib/policies/encrypt";
 import { useWallets, usePrivy } from "@privy-io/react-auth";
@@ -413,30 +421,34 @@ const defaultOutcome: OutcomeConfig = {
 
 export default function PolicyFlow({
   onConfirm,
+  onDelete,
   ensName = "",
   inputToken = "USDC",
   height = "550px",
+  showDelete = false,
 }: {
   onConfirm?: (policy: ReturnType<typeof buildPolicy>) => void;
+  onDelete?: () => void;
   ensName?: string;
   inputToken?: string;
   height?: string;
+  showDelete?: boolean;
 }) {
   const { wallets } = useWallets();
   const { user: privyUser, getAccessToken } = usePrivy();
-  const { user, refetch, userPolicies } = useUser();
+  const { user, refetch, userPolicies, userZkAddress, userForwardTo } = useUser();
   const [saving, setSaving] = useState(false);
 
   console.log("[TEST] userPolicies:", userPolicies);
   console.log("[TEST] inputToken:", inputToken);
   if (userPolicies) {
-    const fromPolicy = policyToFlowConfig(userPolicies, inputToken);
+    const fromPolicy = policyToFlowConfig(userPolicies, inputToken, userZkAddress, userForwardTo);
     console.log("[TEST] fromPolicy:", fromPolicy);
   }
 
   const [config, setConfig] = useState<PolicyConfig>(() => {
     if (userPolicies) {
-      const fromPolicy = policyToFlowConfig(userPolicies, inputToken);
+      const fromPolicy = policyToFlowConfig(userPolicies, inputToken, userZkAddress, userForwardTo);
       if (fromPolicy) return fromPolicy;
     }
     return {
@@ -446,8 +458,8 @@ export default function PolicyFlow({
       outcomeIf: { ...defaultOutcome },
       outcomeElse: { swapToken: "WETH", swapPct: 0, aavePct: 100, destPct: 0 },
       outcome: { ...defaultOutcome },
-      destinationWallet: "",
-      railgunWallet: "",
+      destinationWallet: userForwardTo || "",
+      railgunWallet: userZkAddress || "",
       privateMode: false,
     };
   });
@@ -456,12 +468,22 @@ export default function PolicyFlow({
   const [initialized, setInitialized] = useState(false);
   useEffect(() => {
     if (initialized || !userPolicies) return;
-    const fromPolicy = policyToFlowConfig(userPolicies, inputToken);
+    const fromPolicy = policyToFlowConfig(userPolicies, inputToken, userZkAddress, userForwardTo);
     if (fromPolicy) {
       setConfig(fromPolicy);
       setInitialized(true);
     }
-  }, [userPolicies, inputToken, initialized]);
+  }, [userPolicies, inputToken, initialized, userZkAddress, userForwardTo]);
+
+  // Prefill wallet addresses when context values arrive (for new tokens without an existing policy)
+  useEffect(() => {
+    if (initialized) return;
+    setConfig((prev) => ({
+      ...prev,
+      destinationWallet: userForwardTo || "",
+      railgunWallet: userZkAddress || "",
+    }));
+  }, [userForwardTo, userZkAddress, initialized]);
 
   const toggleBranching = useCallback(() => {
     setConfig((prev) => ({ ...prev, branchingEnabled: !prev.branchingEnabled }));
@@ -622,7 +644,8 @@ export default function PolicyFlow({
   async function handleTestLog() {
     try {
       console.log("[TEST] Step 1: Building plaintext policy...");
-      const policy = buildPolicy(config);
+      const existingTokens = userPolicies?.tokens ?? [];
+      const policy = buildPolicy(config, existingTokens);
       console.log("[TEST] Step 1 result:", JSON.stringify(policy, null, 2));
 
       console.log("[TEST] Step 2: Signing message for key derivation...");
@@ -637,7 +660,7 @@ export default function PolicyFlow({
       console.log("[TEST] Step 3 result:", JSON.stringify(encrypted, null, 2));
 
       console.log("[TEST] Step 4: Building text record...");
-      const textRecord = buildTextRecord(encrypted, ensName);
+      const textRecord = buildTextRecord(encrypted, ensName, config.railgunWallet);
       console.log("[TEST] Step 4 result:", JSON.stringify(textRecord, null, 2));
 
       console.log("[TEST] Step 5: Saving to database...");
@@ -674,11 +697,12 @@ export default function PolicyFlow({
 
     setSaving(true);
     try {
-      const policy = buildPolicy(config);
+      const existingTokens = userPolicies?.tokens ?? [];
+      const policy = buildPolicy(config, existingTokens);
       const signature = await wallet.sign(ENCRYPTION_SIGN_MESSAGE);
       const crePublicKey = process.env.NEXT_PUBLIC_CRE_PUBLIC_KEY!;
       const encrypted = encryptPolicy(policy, signature, crePublicKey);
-      const textRecord = buildTextRecord(encrypted, ensName);
+      const textRecord = buildTextRecord(encrypted, ensName, config.railgunWallet);
 
       const token = await getAccessToken();
       await ky.put("/api/user/text-records", {
@@ -696,6 +720,52 @@ export default function PolicyFlow({
       toast.error("Failed to save policy");
     } finally {
       setSaving(false);
+    }
+  }
+
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const hasExistingPolicy = userPolicies?.tokens.some((t) => t.inputToken === inputToken) ?? false;
+
+  async function handleDelete() {
+    const wallet = wallets.find((w) => w.walletClientType === "privy");
+    if (!wallet) return;
+
+    const privyWallet = privyUser?.linkedAccounts.find(
+      (a) => a.type === "wallet" && a.walletClientType === "privy"
+    );
+    if (!privyWallet || !("address" in privyWallet)) return;
+
+    setDeleting(true);
+    try {
+      const remainingTokens = (userPolicies?.tokens ?? []).filter((t) => t.inputToken !== inputToken);
+      const policy = buildPolicy(config, remainingTokens);
+      // Override tokens to only keep the remaining ones (buildPolicy would re-add the current one)
+      policy.tokens = remainingTokens;
+
+      const signature = await wallet.sign(ENCRYPTION_SIGN_MESSAGE);
+      const crePublicKey = process.env.NEXT_PUBLIC_CRE_PUBLIC_KEY!;
+      const encrypted = encryptPolicy(policy, signature, crePublicKey);
+      const textRecord = buildTextRecord(encrypted, ensName, config.railgunWallet);
+
+      const token = await getAccessToken();
+      await ky.put("/api/user/text-records", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "x-seed-address": privyWallet.address,
+        },
+        json: { textRecords: textRecord },
+      });
+
+      await refetch();
+      setDeleteModalOpen(false);
+      toast.success(`${inputToken} policy deleted`);
+      onDelete?.();
+    } catch (e) {
+      console.error("[Policy] Delete failed:", e);
+      toast.error("Failed to delete policy");
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -790,6 +860,14 @@ export default function PolicyFlow({
           >
             [TEST] Decrypt
           </button>
+          {showDelete && hasExistingPolicy && (userPolicies?.tokens.length ?? 0) > 1 && (
+            <button
+              onClick={() => setDeleteModalOpen(true)}
+              className="size-12 flex items-center justify-center bg-surface-container-high border border-outline-variant/20 text-secondary-ds hover:text-red-400 hover:border-red-400/30 transition-all cursor-pointer"
+            >
+              <Trash2 className="size-4" />
+            </button>
+          )}
           <button
             onClick={handleConfirm}
             disabled={
@@ -803,6 +881,34 @@ export default function PolicyFlow({
           </button>
         </div>
       </div>
+
+      {/* Delete confirmation modal */}
+      <Dialog open={deleteModalOpen} onOpenChange={setDeleteModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete {inputToken} Policy</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete the {inputToken} automation policy? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-3 pt-4">
+            <button
+              onClick={() => setDeleteModalOpen(false)}
+              className="h-10 px-6 bg-surface-container-high border border-outline-variant/20 text-secondary-ds font-headline font-bold uppercase text-[11px] tracking-widest hover:text-on-surface hover:border-outline-variant/40 transition-all cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              className="h-10 px-6 bg-red-500/20 border border-red-500/30 text-red-400 font-headline font-bold uppercase text-[11px] tracking-widest hover:bg-red-500/30 transition-all cursor-pointer flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Delete
+              {deleting ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Flow pane */}
       <div className="relative border border-outline-variant/15" style={{ height }}>
