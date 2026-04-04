@@ -79,7 +79,7 @@ export default function Onboarding() {
   }
 
   return (
-    <div className="flex overflow-hidden gap-24 w-full h-full">
+    <div className="flex overflow-hidden gap-20 w-full h-full">
       {/* Sidebar */}
       <aside className="hidden md:flex w-64 shrink-0 bg-surface flex-col py-8 space-y-6">
         <div className="px-8 mb-4">
@@ -203,7 +203,7 @@ export default function Onboarding() {
           {currentStep === 1 && (
             <motion.div
               key="policy"
-              className="w-full py-8 min-h-full flex flex-col"
+              className="w-[98%] pt-8 min-h-full flex flex-col"
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -20 }}
@@ -226,7 +226,17 @@ export default function Onboarding() {
                 </p>
               </div>
 
-              <PolicyFlow onConfirm={handlePolicyConfirm} />
+              <div className="relative">
+                {/* HUD frame corners */}
+                <div className="absolute top-0 left-0 w-8 h-8 border-t-2 border-l-2 border-primary-container/40 pointer-events-none z-20" />
+                <div className="absolute top-0 right-0 w-8 h-8 border-t-2 border-r-2 border-primary-container/40 pointer-events-none z-20" />
+                <div className="absolute bottom-0 left-0 w-8 h-8 border-b-2 border-l-2 border-primary-container/40 pointer-events-none z-20" />
+                <div className="absolute bottom-0 right-0 w-8 h-8 border-b-2 border-r-2 border-primary-container/40 pointer-events-none z-20" />
+
+                <div className="flex bg-surface-container-lowest border border-outline-variant/15 p-3">
+                  <PolicyFlow onConfirm={handlePolicyConfirm} />
+                </div>
+              </div>
             </motion.div>
           )}
           {currentStep === 2 && (
@@ -277,9 +287,9 @@ export default function Onboarding() {
                     router.push("/dashboard");
                   }}
                   className="mt-4 h-14 px-10 bg-primary-container text-on-primary-container font-headline font-bold uppercase tracking-widest text-base hover:bg-white hover:text-surface transition-all flex items-center gap-3 cursor-pointer"
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.5, delay: 0.6 }}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ duration: 0.5 }}
                 >
                   Go to Dashboard
                   <ArrowRight className="size-5" />

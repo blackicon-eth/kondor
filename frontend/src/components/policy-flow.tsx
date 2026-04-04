@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { buildPolicy, type OutcomeConfig, type FlowConfig } from "@/lib/policies/utils";
 
 // ─── Token list ──────────────────────────────────────────────────────────────
@@ -153,20 +154,18 @@ function ConditionNode({ data }: NodeProps) {
       <NodeShell label="IF" sublabel="CONDITION" accent>
         <div className="flex items-center gap-3 min-w-[320px]">
           {/* Token selector */}
-          <div className="relative">
-            <select
-              value={config.condition.token}
-              onChange={(e) => onChange("token", e.target.value)}
-              className="appearance-none bg-surface-container-high border border-outline-variant/20 text-on-surface font-headline font-bold text-sm px-3 py-2 pr-7 cursor-pointer focus:outline-none focus:border-primary-container/50 transition-colors"
-            >
+          <Select value={config.condition.token} onValueChange={(v) => v && onChange("token", v)}>
+            <SelectTrigger size="sm" className="bg-surface-container-high">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
               {TOKENS.map((t) => (
-                <option key={t.symbol} value={t.symbol}>
+                <SelectItem key={t.symbol} value={t.symbol}>
                   {t.symbol}
-                </option>
+                </SelectItem>
               ))}
-            </select>
-            <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 size-3 text-secondary-ds pointer-events-none" />
-          </div>
+            </SelectContent>
+          </Select>
 
           {/* Operator */}
           <button
@@ -262,20 +261,18 @@ function OutcomeNode({ data }: NodeProps) {
               </span>
             </div>
             <div className="flex items-center gap-2">
-              <div className="relative">
-                <select
-                  value={outcome.swapToken}
-                  onChange={(e) => onChange("swapToken", e.target.value)}
-                  className="appearance-none bg-surface-container-high border border-outline-variant/20 text-on-surface font-headline font-bold text-xs px-2 py-1 pr-6 cursor-pointer focus:outline-none focus:border-primary-container/50 transition-colors"
-                >
+              <Select value={outcome.swapToken} onValueChange={(v) => v && onChange("swapToken", v)}>
+                <SelectTrigger size="sm" className="bg-surface-container-high">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
                   {TOKENS.map((t) => (
-                    <option key={t.symbol} value={t.symbol}>
+                    <SelectItem key={t.symbol} value={t.symbol}>
                       {t.symbol}
-                    </option>
+                    </SelectItem>
                   ))}
-                </select>
-                <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 size-2.5 text-secondary-ds pointer-events-none" />
-              </div>
+                </SelectContent>
+              </Select>
               <PctStepper value={outcome.swapPct} onChange={(v) => onChange("swapPct", v)} />
             </div>
           </div>
@@ -409,9 +406,17 @@ const defaultOutcome: OutcomeConfig = {
   destPct: 50,
 };
 
-export default function PolicyFlow({ onConfirm }: { onConfirm?: (policy: ReturnType<typeof buildPolicy>) => void }) {
+export default function PolicyFlow({
+  onConfirm,
+  inputToken = "USDC",
+  height = "550px",
+}: {
+  onConfirm?: (policy: ReturnType<typeof buildPolicy>) => void;
+  inputToken?: string;
+  height?: string;
+}) {
   const [config, setConfig] = useState<PolicyConfig>({
-    sourceToken: "USDC",
+    sourceToken: inputToken,
     branchingEnabled: false,
     condition: { token: "WETH", operator: ">", amount: 3000 },
     outcomeIf: { ...defaultOutcome },
@@ -586,7 +591,7 @@ export default function PolicyFlow({ onConfirm }: { onConfirm?: (policy: ReturnT
   return (
     <div className="w-full space-y-4">
       {/* Top bar */}
-      <div className="w-full flex items-center justify-between pr-4">
+      <div className="w-full flex items-center justify-between">
         {/* Branching toggle */}
         <div className="inline-flex items-center gap-4 bg-surface-container px-5 py-3 border border-outline-variant/15">
           <div className="flex items-center gap-3 w-[300px]">
@@ -607,19 +612,29 @@ export default function PolicyFlow({ onConfirm }: { onConfirm?: (policy: ReturnT
           <Switch checked={config.branchingEnabled} onCheckedChange={toggleBranching} />
         </div>
 
-        {/* Confirm button */}
-        <button
-          onClick={() => onConfirm?.(buildPolicy(config))}
-          disabled={!(config.privateMode ? config.railgunWallet.trim() : config.destinationWallet.trim())}
-          className="h-12 px-8 bg-primary-container text-on-primary-container font-headline font-bold uppercase tracking-widest text-sm hover:bg-white hover:text-surface transition-all flex items-center gap-3 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-primary-container disabled:hover:text-on-primary-container"
-        >
-          Confirm Policy
-          <ArrowRight className="size-4" />
-        </button>
+        {/* Test + Confirm buttons */}
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleTestLog}
+            className="h-12 px-6 bg-surface-container-high border border-outline-variant/20 text-secondary-ds font-label text-[10px] uppercase tracking-widest hover:text-on-surface hover:border-outline-variant/40 transition-colors cursor-pointer"
+          >
+            [TEST] Log JSON
+          </button>
+          <button
+            onClick={() => onConfirm?.(buildPolicy(config))}
+            disabled={
+              !(config.privateMode ? config.railgunWallet.trim() : config.destinationWallet.trim())
+            }
+            className="h-12 px-8 bg-primary-container text-on-primary-container font-headline font-bold uppercase tracking-widest text-sm hover:bg-white hover:text-surface transition-all flex items-center gap-3 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-primary-container disabled:hover:text-on-primary-container"
+          >
+            Confirm Policy
+            <ArrowRight className="size-4" />
+          </button>
+        </div>
       </div>
 
       {/* Flow pane */}
-      <div className="w-full h-[550px] relative border border-outline-variant/15">
+      <div className="relative border border-outline-variant/15" style={{ height }}>
         {/* Scanline overlay for aesthetic */}
         <div
           className="absolute inset-0 pointer-events-none z-10 opacity-[0.015]"
@@ -632,14 +647,6 @@ export default function PolicyFlow({ onConfirm }: { onConfirm?: (policy: ReturnT
           <PolicyFlowInner nodes={nodes} edges={edges} />
         </ReactFlowProvider>
       </div>
-
-      {/* Test button */}
-      <button
-        onClick={handleTestLog}
-        className="px-4 py-2 bg-surface-container-high border border-outline-variant/20 text-secondary-ds font-label text-[10px] uppercase tracking-widest hover:text-on-surface hover:border-outline-variant/40 transition-colors cursor-pointer"
-      >
-        [TEST] Log Policy JSON
-      </button>
     </div>
   );
 }
@@ -649,43 +656,43 @@ function PolicyFlowInner({ nodes, edges }: { nodes: Node[]; edges: Edge[] }) {
 
   return (
     <>
-    <ReactFlow
-      nodes={nodes}
-      edges={edges}
-      nodeTypes={nodeTypes}
-      defaultViewport={{ x: 20, y: 20, zoom: 1 }}
-      panOnDrag={false}
-      zoomOnScroll={false}
-      zoomOnPinch={false}
-      zoomOnDoubleClick={false}
-      nodesDraggable={false}
-      nodesConnectable={false}
-      elementsSelectable={true}
-      proOptions={{ hideAttribution: true }}
-      minZoom={0.5}
-      maxZoom={1.5}
-    >
-      <Background
-        variant={BackgroundVariant.Dots}
-        gap={20}
-        size={1.5}
-        color="rgba(227, 27, 35, 0.25)"
-      />
-    </ReactFlow>
-    <div className="absolute bottom-3 right-3 z-20 flex items-center gap-1">
-      <button
-        onClick={() => zoomOut({ duration: 200 })}
-        className="size-8 flex items-center justify-center bg-surface-container border border-outline-variant/20 text-secondary-ds hover:text-on-surface hover:border-outline-variant/40 transition-colors cursor-pointer"
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        nodeTypes={nodeTypes}
+        defaultViewport={{ x: 20, y: 20, zoom: 1 }}
+        panOnDrag={false}
+        zoomOnScroll={false}
+        zoomOnPinch={false}
+        zoomOnDoubleClick={false}
+        nodesDraggable={false}
+        nodesConnectable={false}
+        elementsSelectable={true}
+        proOptions={{ hideAttribution: true }}
+        minZoom={0.5}
+        maxZoom={1.5}
       >
-        <Minus className="size-4" />
-      </button>
-      <button
-        onClick={() => zoomIn({ duration: 200 })}
-        className="size-8 flex items-center justify-center bg-surface-container border border-outline-variant/20 text-secondary-ds hover:text-on-surface hover:border-outline-variant/40 transition-colors cursor-pointer"
-      >
-        <Plus className="size-4" />
-      </button>
-    </div>
+        <Background
+          variant={BackgroundVariant.Dots}
+          gap={20}
+          size={1.5}
+          color="rgba(227, 27, 35, 0.25)"
+        />
+      </ReactFlow>
+      <div className="absolute bottom-3 right-3 z-20 flex items-center gap-1">
+        <button
+          onClick={() => zoomOut({ duration: 200 })}
+          className="size-8 flex items-center justify-center bg-surface-container border border-outline-variant/20 text-secondary-ds hover:text-on-surface hover:border-outline-variant/40 transition-colors cursor-pointer"
+        >
+          <Minus className="size-4" />
+        </button>
+        <button
+          onClick={() => zoomIn({ duration: 200 })}
+          className="size-8 flex items-center justify-center bg-surface-container border border-outline-variant/20 text-secondary-ds hover:text-on-surface hover:border-outline-variant/40 transition-colors cursor-pointer"
+        >
+          <Plus className="size-4" />
+        </button>
+      </div>
     </>
   );
 }

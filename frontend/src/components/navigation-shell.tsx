@@ -8,12 +8,21 @@ import { usePrivy } from "@privy-io/react-auth";
 import { AnimatePresence, motion } from "framer-motion";
 import Navbar from "@/components/navbar";
 import Footer from "@/components/footer";
+import { FrozenRouter } from "@/components/frozen-router";
+import { usePathnameTransition } from "@/hooks/use-pathname-transition";
 
 export default function NavigationShell({ children }: { children: React.ReactNode }) {
   const { loading: userLoading, completedOnboarding } = useUser();
   const { authenticated } = usePrivy();
   const pathname = usePathname();
   const router = useRouter();
+  const shouldAnimatePage = usePathnameTransition(pathname);
+
+  useEffect(() => {
+    if ("scrollRestoration" in window.history) {
+      window.history.scrollRestoration = "manual";
+    }
+  }, []);
 
   // redirect to home if user is not authenticated and loading finished
   useEffect(() => {
@@ -67,16 +76,24 @@ export default function NavigationShell({ children }: { children: React.ReactNod
             className="flex justify-center items-center h-full w-full bg-surface"
           >
             <Navbar />
-            <motion.main
-              key={`main-${pathname}`}
-              className="flex justify-center items-start w-full py-16 h-[calc(100vh)]"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.3, ease: "easeInOut" }}
+            <AnimatePresence
+              mode="wait"
+              initial={false}
+              onExitComplete={() => {
+                window.scrollTo(0, 0);
+              }}
             >
-              {children}
-            </motion.main>
+              <motion.main
+                key={pathname}
+                className="flex justify-center items-start w-full py-16 h-[calc(100vh)]"
+                initial={shouldAnimatePage ? { opacity: 0 } : false}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.3, ease: "easeInOut" }}
+              >
+                <FrozenRouter>{children}</FrozenRouter>
+              </motion.main>
+            </AnimatePresence>
             <Footer />
           </motion.div>
         )}

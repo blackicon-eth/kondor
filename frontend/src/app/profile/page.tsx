@@ -3,7 +3,16 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
-import { Zap, Landmark, RotateCcw, ExternalLink, Lock, Loader2 } from "lucide-react";
+import {
+  Shield,
+  Landmark,
+  RotateCcw,
+  ExternalLink,
+  Lock,
+  Loader2,
+  ArrowDownToLine,
+  Sparkles,
+} from "lucide-react";
 
 const RECOVERY_ENTRIES = [
   { address: "st_0x4f...92E1", amount: "4.821", token: "ETH" },
@@ -54,7 +63,7 @@ export default function Profile() {
   return (
     <div className="flex justify-center items-start w-full h-full">
       <motion.div
-        className="w-full max-w-[1400px] mx-auto px-8 py-12"
+        className="w-full max-w-[1500px] mx-auto px-8 py-12"
         variants={stagger}
         initial="hidden"
         animate="show"
@@ -77,9 +86,9 @@ export default function Profile() {
             {/* Red left accent bar */}
             <div className="absolute top-0 left-0 w-1 h-full bg-primary-container" />
 
-            {/* Decorative lightning icon */}
+            {/* Decorative shield icon */}
             <div className="absolute top-6 right-6 opacity-[0.06]">
-              <Zap className="size-28 text-primary-container" />
+              <Shield className="size-28 text-primary-container" />
             </div>
 
             <div className="relative z-10 p-8">
@@ -127,8 +136,8 @@ export default function Profile() {
                 clipPath: "polygon(100% 0, 0 0, 100% 100%)",
               }}
             />
-            <div className="absolute top-2 right-2 z-10">
-              <Zap className="size-4 text-on-primary-container" />
+            <div className="absolute top-2.5 right-2.5 z-10">
+              <ArrowDownToLine className="size-5 text-on-primary-container" />
             </div>
 
             <div className="relative z-10 p-8">
@@ -164,7 +173,7 @@ export default function Profile() {
                 </div>
               </div>
               <button className="flex items-center gap-2 bg-primary-container text-on-primary-container px-5 py-2.5 font-headline font-bold uppercase text-[11px] tracking-widest hover:bg-white hover:text-surface transition-all cursor-pointer">
-                <Zap className="size-3.5" />
+                <Sparkles className="size-3.5" />
                 Recover All
               </button>
             </div>
