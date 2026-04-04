@@ -7,6 +7,12 @@ import ky from "ky";
 type User = {
   seedAddress: string;
   ensSubdomain: string | null;
+  textRecords: string;
+  coinType: number;
+  queryNonce: number;
+  lastQueryAt: Date | null;
+  createdAt: Date | null;
+  updatedAt: Date | null;
 };
 
 type UserContextType = {
