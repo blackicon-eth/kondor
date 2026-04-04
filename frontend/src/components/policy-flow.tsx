@@ -193,17 +193,14 @@ function ConditionNode({ data }: NodeProps) {
           </div>
 
           {/* Operator */}
-          <select
-            value={config.condition.operator}
-            onChange={(e) => onChange("operator", e.target.value)}
-            className="appearance-none bg-surface-container-high border border-outline-variant/20 text-primary-container font-headline font-bold text-lg px-3 py-1.5 w-12 text-center cursor-pointer focus:outline-none focus:border-primary-container/50 transition-colors"
+          <button
+            onClick={() => onChange("operator", config.condition.operator === "<" ? ">" : "<")}
+            className="bg-surface-container-high border border-outline-variant/20 text-primary-container font-headline font-bold text-lg px-3 py-1.5 w-12 text-center cursor-pointer hover:border-primary-container/50 transition-all"
           >
-            {OPERATORS.map((op) => (
-              <option key={op} value={op}>
-                {op}
-              </option>
-            ))}
-          </select>
+            <ChevronDown
+              className={`size-5 mx-auto transition-transform duration-300 -rotate-90 ${config.condition.operator === ">" ? "rotate-90" : ""}`}
+            />
+          </button>
 
           {/* Amount */}
           <div className="flex items-center bg-surface-container-high border border-outline-variant/20 px-3 py-1.5">
