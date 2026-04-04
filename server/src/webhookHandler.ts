@@ -3,10 +3,16 @@ import { config } from "./config";
 import { AddressActivity, WebhookPayload } from "../../shared/types.js";
 import { normalizeAddress, verifyAlchemySignature } from "../../shared/utils.js";
 import { markStealthAddressTriggered, getSubdomainByStealthAddress } from "./gateway";
-import { triggerCreWithPayload } from "./creTrigger";
+import { chainEventWorkflowAfterHttp, triggerCreWithPayload } from "./creTrigger";
+import { resolveSepoliaTokenDecimals } from "./sepoliaTokens";
 
 export interface WebhookHandlerDeps {
   watchedAddressSet: Set<string>;
+  /**
+   * Remove stealth/smart account address from Alchemy ADDRESS_ACTIVITY watch list before CRE runs,
+   * so swap-internal transfers back to the same address do not re-trigger a webhook loop.
+   */
+  removeWatchedStealthAddress?: (normalizedAddress: string) => Promise<void>;
 }
 
 function extractActivities(payload: WebhookPayload): AddressActivity[] {
@@ -62,11 +68,15 @@ export function createAlchemyWebhookHandler(deps: WebhookHandlerDeps) {
 
     const activities = extractActivities(payload);
     const matched: Array<{ activity: AddressActivity; to: string }> = [];
+    const matchedToKeys = new Set<string>();
 
     for (const activity of activities) {
       if (!isTokenTransfer(activity)) continue;
       const rawTo = getRawToAddress(activity);
       if (!rawTo || !deps.watchedAddressSet.has(rawTo.toLowerCase())) continue;
+      const key = rawTo.toLowerCase();
+      if (matchedToKeys.has(key)) continue;
+      matchedToKeys.add(key);
       matched.push({ activity, to: rawTo });
     }
 
@@ -120,15 +130,9 @@ export function createAlchemyWebhookHandler(deps: WebhookHandlerDeps) {
         continue;
       }
 
-      // Find the matching token entry
-      const tokenEntry = policy.tokens?.find(
-        (t) => t.inputToken.toUpperCase() === asset,
-      );
-
-      if (!tokenEntry) {
-        console.log(`[webhook] No token entry for "${asset}" in policy of ${record.ensSubdomain}`);
-        continue;
-      }
+      // Find the matching token entry (per-token encrypted policy). If missing, still trigger CRE with
+      // plaintext empty conditions / elseActions so the workflow reports touchedTokens + mode without swaps.
+      const tokenEntry = policy.tokens?.find((t) => t.inputToken.toUpperCase() === asset);
 
       // activity.value is already human-readable (e.g. "100" for 100 USDC)
       // rawContract.value is hex/atomic — only divide if we fell back to it
@@ -148,35 +152,74 @@ export function createAlchemyWebhookHandler(deps: WebhookHandlerDeps) {
         continue;
       }
 
-      // Build CRE payload
-      const crePayload = {
-        sender: to,
-        forwardTo: policy.forwardTo,
-        salt: record.salt,
-        hashedOwner: "0x0000000000000000000000000000000000000000000000000000000000000000",
-        chain: "ethereum-sepolia",
-        destinationChain: policy.destinationChain,
-        inputToken: tokenEntry.inputToken,
-        inputAmount,
-        inputDecimals: tokenEntry.inputDecimals,
-        isRailgun: policy.isRailgun,
-        isOfframp: policy.isOfframp,
-        ciphertext: tokenEntry.ciphertext,
-      };
+      const inputDecimals = tokenEntry
+        ? tokenEntry.inputDecimals
+        : resolveSepoliaTokenDecimals(asset, decimals);
+
+      // Build CRE payload — with token policy row: ciphertext path. Without: plaintext empty branches (no ciphertext).
+      const crePayload = tokenEntry
+        ? {
+            sender: to,
+            forwardTo: policy.forwardTo,
+            salt: record.salt,
+            hashedOwner: "0x0000000000000000000000000000000000000000000000000000000000000000",
+            chain: "ethereum-sepolia",
+            destinationChain: policy.destinationChain,
+            inputToken: tokenEntry.inputToken,
+            inputAmount,
+            inputDecimals,
+            isRailgun: policy.isRailgun,
+            isOfframp: policy.isOfframp,
+            ciphertext: tokenEntry.ciphertext,
+          }
+        : {
+            sender: to,
+            forwardTo: policy.forwardTo,
+            salt: record.salt,
+            hashedOwner: "0x0000000000000000000000000000000000000000000000000000000000000000",
+            chain: "ethereum-sepolia",
+            destinationChain: policy.destinationChain,
+            inputToken: asset,
+            inputAmount,
+            inputDecimals,
+            isRailgun: policy.isRailgun,
+            isOfframp: policy.isOfframp,
+            conditions: [] as unknown[],
+            elseActions: [] as unknown[],
+          };
+
+      if (!tokenEntry) {
+        console.log(
+          `[webhook] No token entry for "${asset}" in policy of ${record.ensSubdomain} — CRE with empty conditions/elseActions (decimals=${inputDecimals})`,
+        );
+      }
+
+      const toNormalized = to.toLowerCase();
+      if (deps.removeWatchedStealthAddress) {
+        try {
+          await deps.removeWatchedStealthAddress(toNormalized);
+          console.log(`[webhook] Removed ${toNormalized} from Alchemy watch list before CRE`);
+        } catch (err) {
+          console.error(`[webhook] Failed to remove ${toNormalized} from Alchemy watch list:`, err);
+        }
+      }
 
       console.log("[webhook] Triggering CRE workflow:", JSON.stringify(crePayload, null, 2));
 
-      triggerCreWithPayload(crePayload).then((result) => {
-        if (result.ok) {
-          console.log(`[webhook] CRE workflow completed (exit ${result.exitCode})`);
-        } else {
-          console.error(`[webhook] CRE workflow failed (exit ${result.exitCode})`);
-        }
-        if (result.stdout) console.log("[cre:stdout]", result.stdout);
-        if (result.stderr) console.error("[cre:stderr]", result.stderr);
-      }).catch((err) => {
-        console.error("[webhook] CRE trigger error:", err);
-      });
+      triggerCreWithPayload(crePayload)
+        .then(async (result) => {
+          if (result.ok) {
+            console.log(`[webhook] CRE workflow completed (exit ${result.exitCode})`);
+          } else {
+            console.error(`[webhook] CRE workflow failed (exit ${result.exitCode})`);
+          }
+          if (result.stdout) console.log("[cre:stdout]", result.stdout);
+          if (result.stderr) console.error("[cre:stderr]", result.stderr);
+          await chainEventWorkflowAfterHttp(result);
+        })
+        .catch((err) => {
+          console.error("[webhook] CRE trigger error:", err);
+        });
     }
 
     res.status(200).json({ ok: true, matched: matched.length });

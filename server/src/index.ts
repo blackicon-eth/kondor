@@ -80,7 +80,20 @@ async function bootstrap(): Promise<void> {
       console.warn("[alchemy] WEBHOOK_ID is missing, new stealth addresses will not be pushed");
     }
 
-    webhookDeps = { watchedAddressSet: watchedAddresses };
+    webhookDeps = {
+      watchedAddressSet: watchedAddresses,
+      removeWatchedStealthAddress: async (normalized: string) => {
+        if (!manager || !webhookId) return;
+        if (!watchedAddresses.has(normalized)) return;
+        await manager.updateWatchedAddresses({
+          webhookId,
+          addressesToAdd: [],
+          addressesToRemove: [normalized],
+        });
+        watchedAddresses.delete(normalized);
+        await saveWatchedAddresses(Array.from(watchedAddresses));
+      },
+    };
     alchemyWebhookHandler = createAlchemyWebhookHandler(webhookDeps);
   } else {
     console.log("[alchemy] skipping webhook bootstrap because ALCHEMY_API_KEY or ALCHEMY_AUTH_TOKEN is missing");

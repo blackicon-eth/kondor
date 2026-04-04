@@ -18251,7 +18251,7 @@ var MULTICALL3_ABI = parseAbi([
 var EVENT_REPORT_MAGIC = keccak256(toBytes("KONDOR_EVENT_REPORT_V1"));
 var MULTICALL3 = "0xcA11bde05977b3631167028862bE2a173976CA11";
 var ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
-var REPORT_GAS_LIMIT = "5000000";
+var REPORT_GAS_LIMIT = "3000000";
 function decodeReportProcessed(log) {
   if (log.topics.length === 0) {
     throw new Error("ReportProcessed log missing topics");

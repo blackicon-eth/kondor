@@ -42,7 +42,7 @@ function deriveMode(intent: Intent): Mode {
 
 const PORTALS_PRICE_CHAIN = "ethereum";
 const SEPOLIA_CHAIN_ID = 11155111;
-const REPORT_GAS_LIMIT = "1500000";
+const REPORT_GAS_LIMIT = "3000000";
 
 // Mainnet addresses for Portals price lookups
 const MAINNET_TOKENS: Record<string, string> = {
@@ -259,10 +259,15 @@ export const onHttpTrigger = (runtime: Runtime<Config>, payload: HTTPPayload): s
   runtime.log(`Prices: ${JSON.stringify(prices)}`);
 
   // --- 3. Evaluate condition tree ---
+  // Start from elseActions; any branch with no checks is skipped (treated as non-match) so we fall through to else.
   let selectedActions: Action[] = intent.elseActions;
   for (let i = 0; i < intent.conditions.length; i++) {
     const branch = intent.conditions[i];
     runtime.log(`Evaluating condition ${i}:`);
+    if (branch.checks.length === 0) {
+      runtime.log(`→ Condition ${i} has empty checks; skipping (use elseActions if no other branch matches)`);
+      continue;
+    }
     if (evaluateBranch(branch, prices, (m) => runtime.log(m))) {
       runtime.log(`→ Condition ${i} matched`);
       selectedActions = branch.actions;
@@ -299,43 +304,48 @@ export const onHttpTrigger = (runtime: Runtime<Config>, payload: HTTPPayload): s
     runtime.log(`  ${q.tokenIn} → ${q.tokenOut} amount=${q.amount}`);
   }
 
-  if (quotes.length === 0) {
-    return JSON.stringify({ ok: true, message: "No swap actions to execute", prices, selectedActions });
+  // --- 5. Call server /swap_5792 when there are swaps; otherwise empty batch (still report touched input + mode) ---
+  let targets: Hex[] = [];
+  let values: bigint[] = [];
+  let calldatas: Hex[] = [];
+
+  if (quotes.length > 0) {
+    const serverUrl = runtime.getSecret({ id: "KONDOR_SERVER_URL" }).result().value.trim();
+    const swapPayload = {
+      quotes,
+      includeApprovalCalls: true,
+      executeBatchMethod: "batchExecute" as const,
+    };
+
+    runtime.log(`Posting ${quotes.length} quote(s) to ${serverUrl}/swap_5792`);
+
+    const swapBody = httpClient
+      .sendRequest(
+        runtime,
+        apiPost(`${serverUrl}/swap_5792`, swapPayload, "swap_5792"),
+        consensusIdenticalAggregation<string>(),
+      )()
+      .result();
+
+    const swapResult = JSON.parse(swapBody) as {
+      ok: boolean;
+      count: number;
+      targets: string[];
+      values: string[];
+      calldatas: string[];
+    };
+
+    runtime.log(`swap_5792 returned ${swapResult.count} result(s), ${swapResult.targets.length} batch calls`);
+
+    targets = swapResult.targets as Hex[];
+    values = swapResult.values.map((v: string) => BigInt(v));
+    calldatas = swapResult.calldatas as Hex[];
+  } else {
+    runtime.log("No swap quotes — submitting report with empty batch (touchedTokens still include input token)");
   }
-
-  // --- 5. Call server /swap_5792 to get calldata (approvals + swaps) ---
-  const serverUrl = runtime.getSecret({ id: "KONDOR_SERVER_URL" }).result().value.trim();
-  const swapPayload = {
-    quotes,
-    includeApprovalCalls: true,
-    executeBatchMethod: "batchExecute" as const,
-  };
-
-  runtime.log(`Posting ${quotes.length} quote(s) to ${serverUrl}/swap_5792`);
-
-  const swapBody = httpClient
-    .sendRequest(
-      runtime,
-      apiPost(`${serverUrl}/swap_5792`, swapPayload, "swap_5792"),
-      consensusIdenticalAggregation<string>(),
-    )()
-    .result();
-
-  const swapResult = JSON.parse(swapBody) as {
-    ok: boolean;
-    count: number;
-    targets: string[];
-    values: string[];
-    calldatas: string[];
-  };
-
-  runtime.log(`swap_5792 returned ${swapResult.count} result(s), ${swapResult.targets.length} batch calls`);
 
   // --- 6. ABI-encode report for KondorRegistry.onReport ---
   // onReport expects: (bytes32 salt, bytes32 hashedOwner, address[] targets, uint256[] values, bytes[] calldatas, address[] touchedTokens, bool isSweepable, uint8 mode)
-  const targets = swapResult.targets as Hex[];
-  const values = swapResult.values.map((v: string) => BigInt(v));
-  const calldatas = swapResult.calldatas as Hex[];
 
   // Collect unique touched tokens (inputToken + all outputTokens)
   const touchedSet = new Set<string>();
@@ -384,19 +394,29 @@ export const onHttpTrigger = (runtime: Runtime<Config>, payload: HTTPPayload): s
 
   const sepoliaRpc = "https://ethereum-sepolia-rpc.publicnode.com";
   try {
-    const simResult = apiPost(sendRequester, sepoliaRpc, {
-      jsonrpc: "2.0",
-      id: 1,
-      method: "eth_call",
-      params: [
-        {
-          to: runtime.config.registryAddress,
-          data: onReportCalldata,
-        },
-        "latest",
-      ],
-    }, "eth_call simulation");
-    const parsed = JSON.parse(simResult);
+    const simBody = httpClient
+      .sendRequest(
+        runtime,
+        apiPost(
+          sepoliaRpc,
+          {
+            jsonrpc: "2.0",
+            id: 1,
+            method: "eth_call",
+            params: [
+              {
+                to: runtime.config.registryAddress,
+                data: onReportCalldata,
+              },
+              "latest",
+            ],
+          },
+          "eth_call simulation",
+        ),
+        consensusIdenticalAggregation<string>(),
+      )()
+      .result();
+    const parsed = JSON.parse(simBody) as { error?: unknown; result?: string };
     if (parsed.error) {
       runtime.log(`SIMULATION REVERT: ${JSON.stringify(parsed.error)}`);
     } else {
@@ -436,9 +456,12 @@ export const onHttpTrigger = (runtime: Runtime<Config>, payload: HTTPPayload): s
     })
     .result();
 
+  let writeReportTxHash: string | undefined;
   if (writeResult.txStatus === TxStatus.SUCCESS) {
-    const txHash = bytesToHex(writeResult.txHash || new Uint8Array(32));
-    runtime.log(`writeReport SUCCESS: ${txHash}`);
+    writeReportTxHash = bytesToHex(writeResult.txHash || new Uint8Array(32));
+    runtime.log(`writeReport SUCCESS: ${writeReportTxHash}`);
+    // Machine-parseable for server → RPC log index → event-triggered CRE
+    runtime.log(`KONDOR_WRITE_REPORT_TX_HASH:${writeReportTxHash}`);
   } else {
     runtime.log(`writeReport status: ${writeResult.txStatus}`);
   }
@@ -454,6 +477,7 @@ export const onHttpTrigger = (runtime: Runtime<Config>, payload: HTTPPayload): s
     selectedActions,
     batchSize: targets.length,
     encodedReport,
+    writeReportTxHash,
   });
 };
 

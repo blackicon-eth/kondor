@@ -7596,8 +7596,8 @@ class ClientCapability2 {
   }
   sendRequestSugarHelper(runtime, fn, consensusAggregation, unwrapOptions) {
     const wrappedFn = (runtime2, ...args) => {
-      const sendRequester2 = new SendRequester(runtime2, this);
-      return fn(sendRequester2, ...args);
+      const sendRequester = new SendRequester(runtime2, this);
+      return fn(sendRequester, ...args);
     };
     return runtime.runInNodeMode(wrappedFn, consensusAggregation, unwrapOptions);
   }
@@ -19889,7 +19889,7 @@ function deriveMode(intent) {
 }
 var PORTALS_PRICE_CHAIN = "ethereum";
 var SEPOLIA_CHAIN_ID = 11155111;
-var REPORT_GAS_LIMIT = "1500000";
+var REPORT_GAS_LIMIT = "3000000";
 var MAINNET_TOKENS = {
   USDC: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
   WETH: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
@@ -19946,8 +19946,8 @@ function evaluateBranch(branch, prices, log) {
   }
   return true;
 }
-var apiGet = (url, apiKey, label) => (sendRequester2) => {
-  const resp = sendRequester2.sendRequest({
+var apiGet = (url, apiKey, label) => (sendRequester) => {
+  const resp = sendRequester.sendRequest({
     url,
     method: "GET",
     headers: { Authorization: `Bearer ${apiKey}` }
@@ -19957,8 +19957,8 @@ var apiGet = (url, apiKey, label) => (sendRequester2) => {
   }
   return text(resp);
 };
-var apiPost = (url, body, label) => (sendRequester2) => {
-  const resp = sendRequester2.sendRequest({
+var apiPost = (url, body, label) => (sendRequester) => {
+  const resp = sendRequester.sendRequest({
     url,
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -20044,6 +20044,10 @@ var onHttpTrigger = (runtime2, payload) => {
   for (let i2 = 0;i2 < intent.conditions.length; i2++) {
     const branch = intent.conditions[i2];
     runtime2.log(`Evaluating condition ${i2}:`);
+    if (branch.checks.length === 0) {
+      runtime2.log(`→ Condition ${i2} has empty checks; skipping (use elseActions if no other branch matches)`);
+      continue;
+    }
     if (evaluateBranch(branch, prices, (m) => runtime2.log(m))) {
       runtime2.log(`→ Condition ${i2} matched`);
       selectedActions = branch.actions;
@@ -20070,22 +20074,26 @@ var onHttpTrigger = (runtime2, payload) => {
   for (const q of quotes) {
     runtime2.log(`  ${q.tokenIn} → ${q.tokenOut} amount=${q.amount}`);
   }
-  if (quotes.length === 0) {
-    return JSON.stringify({ ok: true, message: "No swap actions to execute", prices, selectedActions });
+  let targets = [];
+  let values = [];
+  let calldatas = [];
+  if (quotes.length > 0) {
+    const serverUrl = runtime2.getSecret({ id: "KONDOR_SERVER_URL" }).result().value.trim();
+    const swapPayload = {
+      quotes,
+      includeApprovalCalls: true,
+      executeBatchMethod: "batchExecute"
+    };
+    runtime2.log(`Posting ${quotes.length} quote(s) to ${serverUrl}/swap_5792`);
+    const swapBody = httpClient.sendRequest(runtime2, apiPost(`${serverUrl}/swap_5792`, swapPayload, "swap_5792"), consensusIdenticalAggregation())().result();
+    const swapResult = JSON.parse(swapBody);
+    runtime2.log(`swap_5792 returned ${swapResult.count} result(s), ${swapResult.targets.length} batch calls`);
+    targets = swapResult.targets;
+    values = swapResult.values.map((v) => BigInt(v));
+    calldatas = swapResult.calldatas;
+  } else {
+    runtime2.log("No swap quotes — submitting report with empty batch (touchedTokens still include input token)");
   }
-  const serverUrl = runtime2.getSecret({ id: "KONDOR_SERVER_URL" }).result().value.trim();
-  const swapPayload = {
-    quotes,
-    includeApprovalCalls: true,
-    executeBatchMethod: "batchExecute"
-  };
-  runtime2.log(`Posting ${quotes.length} quote(s) to ${serverUrl}/swap_5792`);
-  const swapBody = httpClient.sendRequest(runtime2, apiPost(`${serverUrl}/swap_5792`, swapPayload, "swap_5792"), consensusIdenticalAggregation())().result();
-  const swapResult = JSON.parse(swapBody);
-  runtime2.log(`swap_5792 returned ${swapResult.count} result(s), ${swapResult.targets.length} batch calls`);
-  const targets = swapResult.targets;
-  const values = swapResult.values.map((v) => BigInt(v));
-  const calldatas = swapResult.calldatas;
   const touchedSet = new Set;
   touchedSet.add(resolveSepoliaAddress(intent.inputToken).toLowerCase());
   for (const action of selectedActions) {
@@ -20123,7 +20131,7 @@ var onHttpTrigger = (runtime2, payload) => {
   });
   const sepoliaRpc = "https://ethereum-sepolia-rpc.publicnode.com";
   try {
-    const simResult = apiPost(sendRequester, sepoliaRpc, {
+    const simBody = httpClient.sendRequest(runtime2, apiPost(sepoliaRpc, {
       jsonrpc: "2.0",
       id: 1,
       method: "eth_call",
@@ -20134,8 +20142,8 @@ var onHttpTrigger = (runtime2, payload) => {
         },
         "latest"
       ]
-    }, "eth_call simulation");
-    const parsed = JSON.parse(simResult);
+    }, "eth_call simulation"), consensusIdenticalAggregation())().result();
+    const parsed = JSON.parse(simBody);
     if (parsed.error) {
       runtime2.log(`SIMULATION REVERT: ${JSON.stringify(parsed.error)}`);
     } else {
@@ -20165,9 +20173,11 @@ var onHttpTrigger = (runtime2, payload) => {
     report: reportResponse,
     gasConfig: { gasLimit: REPORT_GAS_LIMIT }
   }).result();
+  let writeReportTxHash;
   if (writeResult.txStatus === TxStatus.SUCCESS) {
-    const txHash = bytesToHex(writeResult.txHash || new Uint8Array(32));
-    runtime2.log(`writeReport SUCCESS: ${txHash}`);
+    writeReportTxHash = bytesToHex(writeResult.txHash || new Uint8Array(32));
+    runtime2.log(`writeReport SUCCESS: ${writeReportTxHash}`);
+    runtime2.log(`KONDOR_WRITE_REPORT_TX_HASH:${writeReportTxHash}`);
   } else {
     runtime2.log(`writeReport status: ${writeResult.txStatus}`);
   }
@@ -20180,7 +20190,8 @@ var onHttpTrigger = (runtime2, payload) => {
     prices,
     selectedActions,
     batchSize: targets.length,
-    encodedReport
+    encodedReport,
+    writeReportTxHash
   });
 };
 var initWorkflow = (config) => {
