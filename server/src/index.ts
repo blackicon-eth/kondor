@@ -15,7 +15,6 @@ import {
   getAllSubdomains,
   getSubdomainByStealthAddress,
   getSubdomainBySeed,
-  pruneStaleStealthAddresses,
 } from "./gateway";
 import {
   encrypt,
@@ -371,17 +370,6 @@ async function bootstrap(): Promise<void> {
   });
 
   // ── Start ───────────────────────────────────────────────────────
-
-  setInterval(async () => {
-    try {
-      const removed = await pruneStaleStealthAddresses();
-      if (removed > 0) {
-        console.log(`[cleanup] pruned stale stealth addresses=${removed}`);
-      }
-    } catch (error) {
-      console.warn("[cleanup] failed:", error);
-    }
-  }, 60_000);
 
   app.listen(config.port, () => {
     console.log(`express server running on http://localhost:${config.port}`);
