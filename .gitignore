@@ -39,3 +39,6 @@ Thumbs.db
 # tools
 .claude
 KONDOR.md
+
+# json examples
+.json-examples/
