@@ -1,10 +1,18 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-/// @title SimpleAccount — Minimal smart account deployed per subdomain via CREATE2
-/// @notice Holds assets and executes calldata on behalf of its owner or the registry.
-contract SimpleAccount {
-    address public owner;
+import {IERC1271} from "@openzeppelin/contracts/interfaces/IERC1271.sol";
+import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+
+interface IRegistryShielder {
+    function railgunShielder() external view returns (address);
+}
+
+/// @title SimpleAccount — Minimal smart account deployed via CREATE2
+/// @notice Holds assets and executes calldata on behalf of the registry (CRE)
+///         or any signer whose address hashes to `hashedOwner`.
+contract SimpleAccount is IERC1271 {
+    bytes32 public hashedOwner;
     address public registry;
     bool private _initialized;
 
@@ -13,17 +21,19 @@ contract SimpleAccount {
     error CallFailed(uint256 index);
 
     modifier onlyAuthorized() {
-        if (msg.sender != owner && msg.sender != registry) revert NotAuthorized();
+        if (msg.sender != registry && keccak256(abi.encodePacked(msg.sender)) != hashedOwner) {
+            revert NotAuthorized();
+        }
         _;
     }
 
     /// @notice Called once after CREATE2 deployment.
-    /// @param _owner   The user who owns this account.
-    /// @param _registry The RnsRegistry that can also execute on this account.
-    function initialize(address _owner, address _registry) external {
+    /// @param _hashedOwner  keccak256(abi.encodePacked(ownerAddress))
+    /// @param _registry     The KondorRegistry that can also execute on this account.
+    function initialize(bytes32 _hashedOwner, address _registry) external {
         if (_initialized) revert AlreadyInitialized();
         _initialized = true;
-        owner = _owner;
+        hashedOwner = _hashedOwner;
         registry = _registry;
     }
 
@@ -49,6 +59,20 @@ contract SimpleAccount {
             (bool ok,) = targets[i].call{value: values[i]}(calldatas[i]);
             if (!ok) revert CallFailed(i);
         }
+    }
+
+    /// @notice Reads the Railgun shielder address from the registry.
+    function railgunShielder() external view returns (address) {
+        return IRegistryShielder(registry).railgunShielder();
+    }
+
+    /// @notice EIP-1271: validates that the recovered signer is the preimage of hashedOwner.
+    function isValidSignature(bytes32 hash, bytes memory signature) external view override returns (bytes4) {
+        address signer = ECDSA.recover(hash, signature);
+        if (keccak256(abi.encodePacked(signer)) == hashedOwner) {
+            return 0x1626ba7e;
+        }
+        return 0xffffffff;
     }
 
     receive() external payable {}

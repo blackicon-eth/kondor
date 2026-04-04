@@ -15,7 +15,7 @@ import {
   type HTTPSendRequester,
   type HTTPPayload,
 } from "@chainlink/cre-sdk";
-import { encodeAbiParameters, parseAbiParameters, type Hex } from "viem";
+import { encodeAbiParameters, parseAbiParameters, keccak256, toHex, type Hex } from "viem";
 import {
   decrypt,
   ed25519PrivToX25519,
@@ -27,15 +27,33 @@ import type {
   ConditionBranch,
   Config,
   Intent,
+  Mode,
   Operator,
   PortalsPriceResponse,
 } from "./types";
 
-export type { Action, ConditionBranch, Config, Intent } from "./types";
+export type { Action, ConditionBranch, Config, Intent, Mode } from "./types";
+
+function deriveMode(intent: Intent): Mode {
+  if (intent.isRailgun) return 0;   // Railgun (private)
+  if (intent.isOfframp) return 1;   // OffRamp (cash out)
+  return 2;                          // ForwardTo (send to receiver)
+}
 
 const PORTALS_PRICE_CHAIN = "ethereum";
 const SEPOLIA_CHAIN_ID = 11155111;
 
+// Mainnet addresses for Portals price lookups
+const MAINNET_TOKENS: Record<string, string> = {
+  USDC: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+  WETH: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+  DAI:  "0x6B175474E89094C44Da98b954EedeAC495271d0F",
+  USDT: "0xdAC17F958D2ee523a2206206994597C13D831ec7",
+  WBTC: "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599",
+  LINK: "0x514910771AF9Ca656af840dff83E8264EcF986CA",
+};
+
+// Sepolia addresses for swap execution
 const SEPOLIA_TOKENS: Record<string, string> = {
   USDC: "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
   WETH: "0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9",
@@ -51,8 +69,14 @@ const SEPOLIA_TOKENS: Record<string, string> = {
 // ---------------------------------------------------------------------------
 
 function buildPriceUrl(symbols: string[]): string {
-  const searchQuery = symbols.join(" ");
-  return `https://api.portals.fi/v2/tokens?search=${encodeURIComponent(searchQuery)}&networks=${PORTALS_PRICE_CHAIN}&limit=250`;
+  const addressParams = symbols
+    .map((s) => {
+      const addr = MAINNET_TOKENS[s.toUpperCase()];
+      if (!addr) throw new Error(`No mainnet address for price lookup: ${s}`);
+      return `addresses=${PORTALS_PRICE_CHAIN}:${addr}`;
+    })
+    .join("&");
+  return `https://api.portals.fi/v2/tokens?${addressParams}`;
 }
 
 function evalOp(price: number, op: Operator, threshold: number): boolean {
@@ -175,7 +199,7 @@ export const onHttpTrigger = (runtime: Runtime<Config>, payload: HTTPPayload): s
       ...tokenIntent,
       chain: envelope?.eventChain ?? tokenIntent.chain,
       destinationChain: envelope?.destinationChain ?? tokenIntent.destinationChain,
-      subnameString: envelope?.subnameString ?? tokenIntent.subnameString,
+      salt: tokenIntent.salt ?? envelope?.subnameString ?? tokenIntent.subnameString,
       sender: envelope?.accountAddress ?? tokenIntent.sender,
       receiver: envelope?.forwardTo ?? tokenIntent.receiver,
     };
@@ -185,10 +209,15 @@ export const onHttpTrigger = (runtime: Runtime<Config>, payload: HTTPPayload): s
     intent = JSON.parse(rawInput);
   }
 
+  // Resolve salt: use explicit salt if provided, otherwise hash subnameString for backwards compat
+  const salt: Hex = intent.salt
+    ? (intent.salt as Hex)
+    : keccak256(toHex(intent.subnameString ?? ""));
+
   runtime.log(
     `Intent: ${intent.inputAmount} ${intent.inputToken} source=${intent.chain} priceChain=${PORTALS_PRICE_CHAIN}`,
   );
-  runtime.log(`SA (sender)=${intent.sender}, receiver=${intent.receiver}, subname=${intent.subnameString}`);
+  runtime.log(`SA (sender)=${intent.sender}, receiver=${intent.receiver}, salt=${salt}`);
 
   // --- 2. Fetch prices from Portals (mainnet) ---
   const portalsKey = runtime.getSecret({ id: "PORTALS_API_KEY" }).result();
@@ -292,19 +321,38 @@ export const onHttpTrigger = (runtime: Runtime<Config>, payload: HTTPPayload): s
   runtime.log(`swap_5792 returned ${swapResult.count} result(s), ${swapResult.targets.length} batch calls`);
 
   // --- 6. ABI-encode report for KondorRegistry.onReport ---
-  // onReport expects: (string subdomain, address owner, address[] targets, uint256[] values, bytes[] calldatas)
+  // onReport expects: (bytes32 salt, bytes32 hashedOwner, address[] targets, uint256[] values, bytes[] calldatas, address[] touchedTokens, bool isSweepable, uint8 mode)
   const targets = swapResult.targets as Hex[];
   const values = swapResult.values.map((v: string) => BigInt(v));
   const calldatas = swapResult.calldatas as Hex[];
 
+  // Collect unique touched tokens (inputToken + all outputTokens)
+  const touchedSet = new Set<string>();
+  touchedSet.add(resolveSepoliaAddress(intent.inputToken).toLowerCase());
+  for (const action of selectedActions) {
+    if (action.percent > 0 && action.actionType === "swap") {
+      touchedSet.add(resolveSepoliaAddress(action.outputToken).toLowerCase());
+    }
+  }
+  const touchedTokens = [...touchedSet] as Hex[];
+  const isSweepable = true;
+  const mode = deriveMode(intent);
+  const modeLabels = ["Railgun", "OffRamp", "ForwardTo"] as const;
+  const hashedOwner = intent.hashedOwner as Hex;
+
+  runtime.log(`Touched tokens: ${touchedTokens.join(", ")}, sweepable: ${isSweepable}, mode: ${modeLabels[mode]}`);
+
   const encodedReport = encodeAbiParameters(
-    parseAbiParameters("string, address, address[], uint256[], bytes[]"),
+    parseAbiParameters("bytes32, bytes32, address[], uint256[], bytes[], address[], bool, uint8"),
     [
-      intent.subnameString,
-      intent.receiver as Hex,
+      salt,
+      hashedOwner,
       targets,
       values,
       calldatas,
+      touchedTokens,
+      isSweepable,
+      mode,
     ],
   );
 
@@ -346,11 +394,11 @@ export const onHttpTrigger = (runtime: Runtime<Config>, payload: HTTPPayload): s
   //   runtime.log(`writeReport status: ${writeResult.txStatus}`);
   // }
 
-  runtime.log(`SUCCESS: report ready for ${intent.subnameString}, ${targets.length} batch calls encoded`);
+  runtime.log(`SUCCESS: report ready for salt=${salt}, ${targets.length} batch calls encoded`);
 
   return JSON.stringify({
     ok: true,
-    subnameString: intent.subnameString,
+    salt,
     sender: intent.sender,
     receiver: intent.receiver,
     prices,
@@ -367,13 +415,14 @@ export const onHttpTrigger = (runtime: Runtime<Config>, payload: HTTPPayload): s
 export const initWorkflow = (config: Config) => {
   const http = new HTTPCapability();
 
-  const network = getNetwork({
-    chainFamily: "evm",
-    chainSelectorName: config.chainSelectorName,
-  });
-  if (network) {
-    new EVMClient(network.chainSelector.selector);
-  }
+  // TODO: uncomment when writeReport is enabled
+  // const network = getNetwork({
+  //   chainFamily: "evm",
+  //   chainSelectorName: config.chainSelectorName,
+  // });
+  // if (network) {
+  //   new EVMClient(network.chainSelector.selector);
+  // }
 
   return [
     handler(

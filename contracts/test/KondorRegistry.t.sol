@@ -2,7 +2,7 @@
 pragma solidity ^0.8.28;
 
 import {Test} from "forge-std/Test.sol";
-import {RnsRegistry} from "../src/RnsRegistry.sol";
+import {KondorRegistry} from "../src/KondorRegistry.sol";
 import {SimpleAccount} from "../src/SimpleAccount.sol";
 
 /// @dev Dummy target for testing execute calls
@@ -20,14 +20,14 @@ contract MockTarget {
     receive() external payable {}
 }
 
-contract RnsRegistryTest is Test {
-    RnsRegistry registry;
+contract KondorRegistryTest is Test {
+    KondorRegistry registry;
     MockTarget target;
     address forwarder = address(0xF0);
     address alice = address(0xA1);
 
     function setUp() public {
-        registry = new RnsRegistry(forwarder);
+        registry = new KondorRegistry(forwarder);
         target = new MockTarget();
     }
 
@@ -36,25 +36,25 @@ contract RnsRegistryTest is Test {
     // -------------------------------------------------------------------
 
     function test_createAccount() public {
-        address predicted = registry.predictAddress("alice.rns");
+        address predicted = registry.predictAddress("alice.Kondor");
 
-        address account = registry.createAccount("alice.rns", alice);
+        address account = registry.createAccount("alice.Kondor", alice);
 
         assertEq(account, predicted, "deployed address should match prediction");
-        assertEq(registry.getAccount("alice.rns"), account);
+        assertEq(registry.getAccount("alice.Kondor"), account);
         assertEq(SimpleAccount(payable(account)).owner(), alice);
         assertEq(SimpleAccount(payable(account)).registry(), address(registry));
     }
 
     function test_createAccount_duplicate_reverts() public {
-        registry.createAccount("alice.rns", alice);
-        vm.expectRevert(abi.encodeWithSelector(RnsRegistry.AccountAlreadyExists.selector, "alice.rns"));
-        registry.createAccount("alice.rns", alice);
+        registry.createAccount("alice.Kondor", alice);
+        vm.expectRevert(abi.encodeWithSelector(KondorRegistry.AccountAlreadyExists.selector, "alice.Kondor"));
+        registry.createAccount("alice.Kondor", alice);
     }
 
     function test_differentSubdomains_differentAddresses() public {
-        address a1 = registry.createAccount("alice.rns", alice);
-        address a2 = registry.createAccount("bob.rns", alice);
+        address a1 = registry.createAccount("alice.Kondor", alice);
+        address a2 = registry.createAccount("bob.Kondor", alice);
         assertTrue(a1 != a2);
     }
 
@@ -72,13 +72,13 @@ contract RnsRegistryTest is Test {
         bytes[] memory calldatas = new bytes[](1);
         calldatas[0] = abi.encodeCall(MockTarget.setValue, (42));
 
-        bytes memory report = abi.encode("test.rns", alice, targets, values, calldatas);
+        bytes memory report = abi.encode("test.Kondor", alice, targets, values, calldatas);
 
         vm.prank(forwarder);
         registry.onReport("", report);
 
         // Account should be created
-        address account = registry.getAccount("test.rns");
+        address account = registry.getAccount("test.Kondor");
         assertTrue(account != address(0));
 
         // Call should have been executed
@@ -86,7 +86,7 @@ contract RnsRegistryTest is Test {
     }
 
     function test_onReport_existingAccount_justExecutes() public {
-        registry.createAccount("test.rns", alice);
+        registry.createAccount("test.Kondor", alice);
 
         address[] memory targets = new address[](1);
         targets[0] = address(target);
@@ -94,7 +94,7 @@ contract RnsRegistryTest is Test {
         bytes[] memory calldatas = new bytes[](1);
         calldatas[0] = abi.encodeCall(MockTarget.setValue, (99));
 
-        bytes memory report = abi.encode("test.rns", alice, targets, values, calldatas);
+        bytes memory report = abi.encode("test.Kondor", alice, targets, values, calldatas);
 
         vm.prank(forwarder);
         registry.onReport("", report);
@@ -107,19 +107,19 @@ contract RnsRegistryTest is Test {
         uint256[] memory values = new uint256[](0);
         bytes[] memory calldatas = new bytes[](0);
 
-        bytes memory report = abi.encode("empty.rns", alice, targets, values, calldatas);
+        bytes memory report = abi.encode("empty.Kondor", alice, targets, values, calldatas);
 
         vm.prank(forwarder);
         registry.onReport("", report);
 
-        assertTrue(registry.getAccount("empty.rns") != address(0));
+        assertTrue(registry.getAccount("empty.Kondor") != address(0));
     }
 
     function test_onReport_unauthorizedForwarder_reverts() public {
-        bytes memory report = abi.encode("x.rns", alice, new address[](0), new uint256[](0), new bytes[](0));
+        bytes memory report = abi.encode("x.Kondor", alice, new address[](0), new uint256[](0), new bytes[](0));
 
         vm.prank(address(0xBAD));
-        vm.expectRevert(RnsRegistry.UnauthorizedForwarder.selector);
+        vm.expectRevert(KondorRegistry.UnauthorizedForwarder.selector);
         registry.onReport("", report);
     }
 
@@ -128,7 +128,7 @@ contract RnsRegistryTest is Test {
     // -------------------------------------------------------------------
 
     function test_executeOnAccount() public {
-        registry.createAccount("exec.rns", alice);
+        registry.createAccount("exec.Kondor", alice);
 
         address[] memory targets = new address[](1);
         targets[0] = address(target);
@@ -136,14 +136,14 @@ contract RnsRegistryTest is Test {
         bytes[] memory calldatas = new bytes[](1);
         calldatas[0] = abi.encodeCall(MockTarget.setValue, (77));
 
-        registry.executeOnAccount("exec.rns", targets, values, calldatas);
+        registry.executeOnAccount("exec.Kondor", targets, values, calldatas);
 
         assertEq(target.value(), 77);
     }
 
     function test_executeOnAccount_nonexistent_reverts() public {
-        vm.expectRevert(abi.encodeWithSelector(RnsRegistry.AccountDoesNotExist.selector, "nope.rns"));
-        registry.executeOnAccount("nope.rns", new address[](0), new uint256[](0), new bytes[](0));
+        vm.expectRevert(abi.encodeWithSelector(KondorRegistry.AccountDoesNotExist.selector, "nope.Kondor"));
+        registry.executeOnAccount("nope.Kondor", new address[](0), new uint256[](0), new bytes[](0));
     }
 
     // -------------------------------------------------------------------
@@ -151,7 +151,7 @@ contract RnsRegistryTest is Test {
     // -------------------------------------------------------------------
 
     function test_account_execute_byOwner() public {
-        address account = registry.createAccount("own.rns", alice);
+        address account = registry.createAccount("own.Kondor", alice);
 
         vm.prank(alice);
         SimpleAccount(payable(account)).execute(address(target), 0, abi.encodeCall(MockTarget.setValue, (11)));
@@ -160,7 +160,7 @@ contract RnsRegistryTest is Test {
     }
 
     function test_account_execute_unauthorized_reverts() public {
-        address account = registry.createAccount("own.rns", alice);
+        address account = registry.createAccount("own.Kondor", alice);
 
         vm.prank(address(0xDEAD));
         vm.expectRevert(SimpleAccount.NotAuthorized.selector);
@@ -168,14 +168,14 @@ contract RnsRegistryTest is Test {
     }
 
     function test_account_initialize_twice_reverts() public {
-        address account = registry.createAccount("own.rns", alice);
+        address account = registry.createAccount("own.Kondor", alice);
 
         vm.expectRevert(SimpleAccount.AlreadyInitialized.selector);
         SimpleAccount(payable(account)).initialize(alice, address(registry));
     }
 
     function test_account_batchExecute_revert_propagates() public {
-        address account = registry.createAccount("rev.rns", alice);
+        address account = registry.createAccount("rev.Kondor", alice);
 
         address[] memory targets = new address[](1);
         targets[0] = address(target);
@@ -193,12 +193,12 @@ contract RnsRegistryTest is Test {
     // -------------------------------------------------------------------
 
     function test_onReport_noForwarder_anyoneCanCall() public {
-        RnsRegistry open = new RnsRegistry(address(0));
-        bytes memory report = abi.encode("open.rns", alice, new address[](0), new uint256[](0), new bytes[](0));
+        KondorRegistry open = new KondorRegistry(address(0));
+        bytes memory report = abi.encode("open.Kondor", alice, new address[](0), new uint256[](0), new bytes[](0));
 
         vm.prank(address(0xBEEF));
         open.onReport("", report);
 
-        assertTrue(open.getAccount("open.rns") != address(0));
+        assertTrue(open.getAccount("open.Kondor") != address(0));
     }
 }

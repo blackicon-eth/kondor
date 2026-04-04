@@ -831,7 +831,7 @@ function toHex(value2, opts = {}) {
   }
   if (typeof value2 === "boolean")
     return boolToHex(value2, opts);
-  return bytesToHex2(value2, opts);
+  return bytesToHex(value2, opts);
 }
 function boolToHex(value2, opts = {}) {
   const hex = `0x${Number(value2)}`;
@@ -841,7 +841,7 @@ function boolToHex(value2, opts = {}) {
   }
   return hex;
 }
-function bytesToHex2(value2, opts = {}) {
+function bytesToHex(value2, opts = {}) {
   let string = "";
   for (let i2 = 0;i2 < value2.length; i2++) {
     string += hexes[value2[i2]];
@@ -883,7 +883,7 @@ function numberToHex(value_, opts = {}) {
 }
 function stringToHex(value_, opts = {}) {
   const value2 = encoder.encode(value_);
-  return bytesToHex2(value2, opts);
+  return bytesToHex(value2, opts);
 }
 var hexes;
 var encoder;
@@ -1071,7 +1071,7 @@ function byteSwap32(arr) {
   }
   return arr;
 }
-function bytesToHex3(bytes) {
+function bytesToHex2(bytes) {
   abytes(bytes);
   if (hasHexBuiltin)
     return bytes.toHex();
@@ -2282,11 +2282,11 @@ function hexToNumber(hex) {
   return hex === "" ? _0n2 : BigInt("0x" + hex);
 }
 function bytesToNumberBE(bytes) {
-  return hexToNumber(bytesToHex3(bytes));
+  return hexToNumber(bytesToHex2(bytes));
 }
 function bytesToNumberLE(bytes) {
   abytes(bytes);
-  return hexToNumber(bytesToHex3(Uint8Array.from(bytes).reverse()));
+  return hexToNumber(bytesToHex2(Uint8Array.from(bytes).reverse()));
 }
 function numberToBytesBE(n, len2) {
   return hexToBytes3(n.toString(16).padStart(len2 * 2, "0"));
@@ -6823,26 +6823,6 @@ var Mode;
   Mode2[Mode2["NODE"] = 2] = "NODE";
 })(Mode || (Mode = {}));
 var file_tools_generator_v1alpha_cre_metadata = /* @__PURE__ */ fileDesc("Cip0b29scy9nZW5lcmF0b3IvdjFhbHBoYS9jcmVfbWV0YWRhdGEucHJvdG8SF3Rvb2xzLmdlbmVyYXRvci52MWFscGhhIoQBCgtTdHJpbmdMYWJlbBJECghkZWZhdWx0cxgBIAMoCzIyLnRvb2xzLmdlbmVyYXRvci52MWFscGhhLlN0cmluZ0xhYmVsLkRlZmF1bHRzRW50cnkaLwoNRGVmYXVsdHNFbnRyeRILCgNrZXkYASABKAkSDQoFdmFsdWUYAiABKAk6AjgBIogBCgtVaW50NjRMYWJlbBJECghkZWZhdWx0cxgBIAMoCzIyLnRvb2xzLmdlbmVyYXRvci52MWFscGhhLlVpbnQ2NExhYmVsLkRlZmF1bHRzRW50cnkaMwoNRGVmYXVsdHNFbnRyeRILCgNrZXkYASABKAkSEQoFdmFsdWUYAiABKARCAjAAOgI4ASKEAQoLVWludDMyTGFiZWwSRAoIZGVmYXVsdHMYASADKAsyMi50b29scy5nZW5lcmF0b3IudjFhbHBoYS5VaW50MzJMYWJlbC5EZWZhdWx0c0VudHJ5Gi8KDURlZmF1bHRzRW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgNOgI4ASKGAQoKSW50NjRMYWJlbBJDCghkZWZhdWx0cxgBIAMoCzIxLnRvb2xzLmdlbmVyYXRvci52MWFscGhhLkludDY0TGFiZWwuRGVmYXVsdHNFbnRyeRozCg1EZWZhdWx0c0VudHJ5EgsKA2tleRgBIAEoCRIRCgV2YWx1ZRgCIAEoA0ICMAA6AjgBIoIBCgpJbnQzMkxhYmVsEkMKCGRlZmF1bHRzGAEgAygLMjEudG9vbHMuZ2VuZXJhdG9yLnYxYWxwaGEuSW50MzJMYWJlbC5EZWZhdWx0c0VudHJ5Gi8KDURlZmF1bHRzRW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgFOgI4ASLBAgoFTGFiZWwSPAoMc3RyaW5nX2xhYmVsGAEgASgLMiQudG9vbHMuZ2VuZXJhdG9yLnYxYWxwaGEuU3RyaW5nTGFiZWxIABI8Cgx1aW50NjRfbGFiZWwYAiABKAsyJC50b29scy5nZW5lcmF0b3IudjFhbHBoYS5VaW50NjRMYWJlbEgAEjoKC2ludDY0X2xhYmVsGAMgASgLMiMudG9vbHMuZ2VuZXJhdG9yLnYxYWxwaGEuSW50NjRMYWJlbEgAEjwKDHVpbnQzMl9sYWJlbBgEIAEoCzIkLnRvb2xzLmdlbmVyYXRvci52MWFscGhhLlVpbnQzMkxhYmVsSAASOgoLaW50MzJfbGFiZWwYBSABKAsyIy50b29scy5nZW5lcmF0b3IudjFhbHBoYS5JbnQzMkxhYmVsSABCBgoEa2luZCLkAQoSQ2FwYWJpbGl0eU1ldGFkYXRhEh8KBG1vZGUYASABKA4yES5zZGsudjFhbHBoYS5Nb2RlEhUKDWNhcGFiaWxpdHlfaWQYAiABKAkSRwoGbGFiZWxzGAMgAygLMjcudG9vbHMuZ2VuZXJhdG9yLnYxYWxwaGEuQ2FwYWJpbGl0eU1ldGFkYXRhLkxhYmVsc0VudHJ5Gk0KC0xhYmVsc0VudHJ5EgsKA2tleRgBIAEoCRItCgV2YWx1ZRgCIAEoCzIeLnRvb2xzLmdlbmVyYXRvci52MWFscGhhLkxhYmVsOgI4ASI2ChhDYXBhYmlsaXR5TWV0aG9kTWV0YWRhdGESGgoSbWFwX3RvX3VudHlwZWRfYXBpGAEgASgIOm4KCmNhcGFiaWxpdHkSHy5nb29nbGUucHJvdG9idWYuU2VydmljZU9wdGlvbnMY0IYDIAEoCzIrLnRvb2xzLmdlbmVyYXRvci52MWFscGhhLkNhcGFiaWxpdHlNZXRhZGF0YVIKY2FwYWJpbGl0eTprCgZtZXRob2QSHi5nb29nbGUucHJvdG9idWYuTWV0aG9kT3B0aW9ucxjRhgMgASgLMjEudG9vbHMuZ2VuZXJhdG9yLnYxYWxwaGEuQ2FwYWJpbGl0eU1ldGhvZE1ldGFkYXRhUgZtZXRob2RCrwEKG2NvbS50b29scy5nZW5lcmF0b3IudjFhbHBoYUIQQ3JlTWV0YWRhdGFQcm90b1ABogIDVEdYqgIXVG9vbHMuR2VuZXJhdG9yLlYxYWxwaGHKAhhUb29sc1xHZW5lcmF0b3JfXFYxYWxwaGHiAiRUb29sc1xHZW5lcmF0b3JfXFYxYWxwaGFcR1BCTWV0YWRhdGHqAhlUb29sczo6R2VuZXJhdG9yOjpWMWFscGhhYgZwcm90bzM", [file_google_protobuf_descriptor, file_sdk_v1alpha_sdk]);
-var file_capabilities_blockchain_evm_v1alpha_client = /* @__PURE__ */ fileDesc("CjBjYXBhYmlsaXRpZXMvYmxvY2tjaGFpbi9ldm0vdjFhbHBoYS9jbGllbnQucHJvdG8SI2NhcGFiaWxpdGllcy5ibG9ja2NoYWluLmV2bS52MWFscGhhIh0KC1RvcGljVmFsdWVzEg4KBnZhbHVlcxgBIAMoDCK4AQoXRmlsdGVyTG9nVHJpZ2dlclJlcXVlc3QSEQoJYWRkcmVzc2VzGAEgAygMEkAKBnRvcGljcxgCIAMoCzIwLmNhcGFiaWxpdGllcy5ibG9ja2NoYWluLmV2bS52MWFscGhhLlRvcGljVmFsdWVzEkgKCmNvbmZpZGVuY2UYAyABKA4yNC5jYXBhYmlsaXRpZXMuYmxvY2tjaGFpbi5ldm0udjFhbHBoYS5Db25maWRlbmNlTGV2ZWwiegoTQ2FsbENvbnRyYWN0UmVxdWVzdBI6CgRjYWxsGAEgASgLMiwuY2FwYWJpbGl0aWVzLmJsb2NrY2hhaW4uZXZtLnYxYWxwaGEuQ2FsbE1zZxInCgxibG9ja19udW1iZXIYAiABKAsyES52YWx1ZXMudjEuQmlnSW50IiEKEUNhbGxDb250cmFjdFJlcGx5EgwKBGRhdGEYASABKAwiWwoRRmlsdGVyTG9nc1JlcXVlc3QSRgoMZmlsdGVyX3F1ZXJ5GAEgASgLMjAuY2FwYWJpbGl0aWVzLmJsb2NrY2hhaW4uZXZtLnYxYWxwaGEuRmlsdGVyUXVlcnkiSQoPRmlsdGVyTG9nc1JlcGx5EjYKBGxvZ3MYASADKAsyKC5jYXBhYmlsaXRpZXMuYmxvY2tjaGFpbi5ldm0udjFhbHBoYS5Mb2cixwEKA0xvZxIPCgdhZGRyZXNzGAEgASgMEg4KBnRvcGljcxgCIAMoDBIPCgd0eF9oYXNoGAMgASgMEhIKCmJsb2NrX2hhc2gYBCABKAwSDAoEZGF0YRgFIAEoDBIRCglldmVudF9zaWcYBiABKAwSJwoMYmxvY2tfbnVtYmVyGAcgASgLMhEudmFsdWVzLnYxLkJpZ0ludBIQCgh0eF9pbmRleBgIIAEoDRINCgVpbmRleBgJIAEoDRIPCgdyZW1vdmVkGAogASgIIjEKB0NhbGxNc2cSDAoEZnJvbRgBIAEoDBIKCgJ0bxgCIAEoDBIMCgRkYXRhGAMgASgMIr0BCgtGaWx0ZXJRdWVyeRISCgpibG9ja19oYXNoGAEgASgMEiUKCmZyb21fYmxvY2sYAiABKAsyES52YWx1ZXMudjEuQmlnSW50EiMKCHRvX2Jsb2NrGAMgASgLMhEudmFsdWVzLnYxLkJpZ0ludBIRCglhZGRyZXNzZXMYBCADKAwSOwoGdG9waWNzGAUgAygLMisuY2FwYWJpbGl0aWVzLmJsb2NrY2hhaW4uZXZtLnYxYWxwaGEuVG9waWNzIhcKBlRvcGljcxINCgV0b3BpYxgBIAMoDCJMChBCYWxhbmNlQXRSZXF1ZXN0Eg8KB2FjY291bnQYASABKAwSJwoMYmxvY2tfbnVtYmVyGAIgASgLMhEudmFsdWVzLnYxLkJpZ0ludCI0Cg5CYWxhbmNlQXRSZXBseRIiCgdiYWxhbmNlGAEgASgLMhEudmFsdWVzLnYxLkJpZ0ludCJPChJFc3RpbWF0ZUdhc1JlcXVlc3QSOQoDbXNnGAEgASgLMiwuY2FwYWJpbGl0aWVzLmJsb2NrY2hhaW4uZXZtLnYxYWxwaGEuQ2FsbE1zZyIjChBFc3RpbWF0ZUdhc1JlcGx5Eg8KA2dhcxgBIAEoBEICMAAiKwobR2V0VHJhbnNhY3Rpb25CeUhhc2hSZXF1ZXN0EgwKBGhhc2gYASABKAwiYgoZR2V0VHJhbnNhY3Rpb25CeUhhc2hSZXBseRJFCgt0cmFuc2FjdGlvbhgBIAEoCzIwLmNhcGFiaWxpdGllcy5ibG9ja2NoYWluLmV2bS52MWFscGhhLlRyYW5zYWN0aW9uIqEBCgtUcmFuc2FjdGlvbhIRCgVub25jZRgBIAEoBEICMAASDwoDZ2FzGAIgASgEQgIwABIKCgJ0bxgDIAEoDBIMCgRkYXRhGAQgASgMEgwKBGhhc2gYBSABKAwSIAoFdmFsdWUYBiABKAsyES52YWx1ZXMudjEuQmlnSW50EiQKCWdhc19wcmljZRgHIAEoCzIRLnZhbHVlcy52MS5CaWdJbnQiLAocR2V0VHJhbnNhY3Rpb25SZWNlaXB0UmVxdWVzdBIMCgRoYXNoGAEgASgMIlsKGkdldFRyYW5zYWN0aW9uUmVjZWlwdFJlcGx5Ej0KB3JlY2VpcHQYASABKAsyLC5jYXBhYmlsaXRpZXMuYmxvY2tjaGFpbi5ldm0udjFhbHBoYS5SZWNlaXB0IpkCCgdSZWNlaXB0EhIKBnN0YXR1cxgBIAEoBEICMAASFAoIZ2FzX3VzZWQYAiABKARCAjAAEhQKCHR4X2luZGV4GAMgASgEQgIwABISCgpibG9ja19oYXNoGAQgASgMEjYKBGxvZ3MYBiADKAsyKC5jYXBhYmlsaXRpZXMuYmxvY2tjaGFpbi5ldm0udjFhbHBoYS5Mb2cSDwoHdHhfaGFzaBgHIAEoDBIuChNlZmZlY3RpdmVfZ2FzX3ByaWNlGAggASgLMhEudmFsdWVzLnYxLkJpZ0ludBInCgxibG9ja19udW1iZXIYCSABKAsyES52YWx1ZXMudjEuQmlnSW50EhgKEGNvbnRyYWN0X2FkZHJlc3MYCiABKAwiQAoVSGVhZGVyQnlOdW1iZXJSZXF1ZXN0EicKDGJsb2NrX251bWJlchgBIAEoCzIRLnZhbHVlcy52MS5CaWdJbnQiUgoTSGVhZGVyQnlOdW1iZXJSZXBseRI7CgZoZWFkZXIYASABKAsyKy5jYXBhYmlsaXRpZXMuYmxvY2tjaGFpbi5ldm0udjFhbHBoYS5IZWFkZXIiawoGSGVhZGVyEhUKCXRpbWVzdGFtcBgBIAEoBEICMAASJwoMYmxvY2tfbnVtYmVyGAIgASgLMhEudmFsdWVzLnYxLkJpZ0ludBIMCgRoYXNoGAMgASgMEhMKC3BhcmVudF9oYXNoGAQgASgMIqsBChJXcml0ZVJlcG9ydFJlcXVlc3QSEAoIcmVjZWl2ZXIYASABKAwSKwoGcmVwb3J0GAIgASgLMhsuc2RrLnYxYWxwaGEuUmVwb3J0UmVzcG9uc2USRwoKZ2FzX2NvbmZpZxgDIAEoCzIuLmNhcGFiaWxpdGllcy5ibG9ja2NoYWluLmV2bS52MWFscGhhLkdhc0NvbmZpZ0gAiAEBQg0KC19nYXNfY29uZmlnIiIKCUdhc0NvbmZpZxIVCglnYXNfbGltaXQYASABKARCAjAAIocDChBXcml0ZVJlcG9ydFJlcGx5EkAKCXR4X3N0YXR1cxgBIAEoDjItLmNhcGFiaWxpdGllcy5ibG9ja2NoYWluLmV2bS52MWFscGhhLlR4U3RhdHVzEnUKInJlY2VpdmVyX2NvbnRyYWN0X2V4ZWN1dGlvbl9zdGF0dXMYAiABKA4yRC5jYXBhYmlsaXRpZXMuYmxvY2tjaGFpbi5ldm0udjFhbHBoYS5SZWNlaXZlckNvbnRyYWN0RXhlY3V0aW9uU3RhdHVzSACIAQESFAoHdHhfaGFzaBgDIAEoDEgBiAEBEi8KD3RyYW5zYWN0aW9uX2ZlZRgEIAEoCzIRLnZhbHVlcy52MS5CaWdJbnRIAogBARIaCg1lcnJvcl9tZXNzYWdlGAUgASgJSAOIAQFCJQojX3JlY2VpdmVyX2NvbnRyYWN0X2V4ZWN1dGlvbl9zdGF0dXNCCgoIX3R4X2hhc2hCEgoQX3RyYW5zYWN0aW9uX2ZlZUIQCg5fZXJyb3JfbWVzc2FnZSppCg9Db25maWRlbmNlTGV2ZWwSGQoVQ09ORklERU5DRV9MRVZFTF9TQUZFEAASGwoXQ09ORklERU5DRV9MRVZFTF9MQVRFU1QQARIeChpDT05GSURFTkNFX0xFVkVMX0ZJTkFMSVpFRBACKoIBCh9SZWNlaXZlckNvbnRyYWN0RXhlY3V0aW9uU3RhdHVzEi4KKlJFQ0VJVkVSX0NPTlRSQUNUX0VYRUNVVElPTl9TVEFUVVNfU1VDQ0VTUxAAEi8KK1JFQ0VJVkVSX0NPTlRSQUNUX0VYRUNVVElPTl9TVEFUVVNfUkVWRVJURUQQASpOCghUeFN0YXR1cxITCg9UWF9TVEFUVVNfRkFUQUwQABIWChJUWF9TVEFUVVNfUkVWRVJURUQQARIVChFUWF9TVEFUVVNfU1VDQ0VTUxACMrsXCgZDbGllbnQSgAEKDENhbGxDb250cmFjdBI4LmNhcGFiaWxpdGllcy5ibG9ja2NoYWluLmV2bS52MWFscGhhLkNhbGxDb250cmFjdFJlcXVlc3QaNi5jYXBhYmlsaXRpZXMuYmxvY2tjaGFpbi5ldm0udjFhbHBoYS5DYWxsQ29udHJhY3RSZXBseRJ6CgpGaWx0ZXJMb2dzEjYuY2FwYWJpbGl0aWVzLmJsb2NrY2hhaW4uZXZtLnYxYWxwaGEuRmlsdGVyTG9nc1JlcXVlc3QaNC5jYXBhYmlsaXRpZXMuYmxvY2tjaGFpbi5ldm0udjFhbHBoYS5GaWx0ZXJMb2dzUmVwbHkSdwoJQmFsYW5jZUF0EjUuY2FwYWJpbGl0aWVzLmJsb2NrY2hhaW4uZXZtLnYxYWxwaGEuQmFsYW5jZUF0UmVxdWVzdBozLmNhcGFiaWxpdGllcy5ibG9ja2NoYWluLmV2bS52MWFscGhhLkJhbGFuY2VBdFJlcGx5En0KC0VzdGltYXRlR2FzEjcuY2FwYWJpbGl0aWVzLmJsb2NrY2hhaW4uZXZtLnYxYWxwaGEuRXN0aW1hdGVHYXNSZXF1ZXN0GjUuY2FwYWJpbGl0aWVzLmJsb2NrY2hhaW4uZXZtLnYxYWxwaGEuRXN0aW1hdGVHYXNSZXBseRKYAQoUR2V0VHJhbnNhY3Rpb25CeUhhc2gSQC5jYXBhYmlsaXRpZXMuYmxvY2tjaGFpbi5ldm0udjFhbHBoYS5HZXRUcmFuc2FjdGlvbkJ5SGFzaFJlcXVlc3QaPi5jYXBhYmlsaXRpZXMuYmxvY2tjaGFpbi5ldm0udjFhbHBoYS5HZXRUcmFuc2FjdGlvbkJ5SGFzaFJlcGx5EpsBChVHZXRUcmFuc2FjdGlvblJlY2VpcHQSQS5jYXBhYmlsaXRpZXMuYmxvY2tjaGFpbi5ldm0udjFhbHBoYS5HZXRUcmFuc2FjdGlvblJlY2VpcHRSZXF1ZXN0Gj8uY2FwYWJpbGl0aWVzLmJsb2NrY2hhaW4uZXZtLnYxYWxwaGEuR2V0VHJhbnNhY3Rpb25SZWNlaXB0UmVwbHkShgEKDkhlYWRlckJ5TnVtYmVyEjouY2FwYWJpbGl0aWVzLmJsb2NrY2hhaW4uZXZtLnYxYWxwaGEuSGVhZGVyQnlOdW1iZXJSZXF1ZXN0GjguY2FwYWJpbGl0aWVzLmJsb2NrY2hhaW4uZXZtLnYxYWxwaGEuSGVhZGVyQnlOdW1iZXJSZXBseRJ2CgpMb2dUcmlnZ2VyEjwuY2FwYWJpbGl0aWVzLmJsb2NrY2hhaW4uZXZtLnYxYWxwaGEuRmlsdGVyTG9nVHJpZ2dlclJlcXVlc3QaKC5jYXBhYmlsaXRpZXMuYmxvY2tjaGFpbi5ldm0udjFhbHBoYS5Mb2cwARJ9CgtXcml0ZVJlcG9ydBI3LmNhcGFiaWxpdGllcy5ibG9ja2NoYWluLmV2bS52MWFscGhhLldyaXRlUmVwb3J0UmVxdWVzdBo1LmNhcGFiaWxpdGllcy5ibG9ja2NoYWluLmV2bS52MWFscGhhLldyaXRlUmVwb3J0UmVwbHkagA6CtRj7DQgBEglldm1AMS4wLjAa6w0KDUNoYWluU2VsZWN0b3IS2Q0S1g0KJAoXYXBlY2hhaW4tdGVzdG5ldC1jdXJ0aXMQwcO0+I3EkrKJAQoXCgthcmMtdGVzdG5ldBDnxoye19fQjSoKHQoRYXZhbGFuY2hlLW1haW5uZXQQ1eeKwOHVmKRZCiMKFmF2YWxhbmNoZS10ZXN0bmV0LWZ1amkQm/n8kKLjqPjMAQooChtiaW5hbmNlX3NtYXJ0X2NoYWluLW1haW5uZXQQz/eU8djtlbidAQooChtiaW5hbmNlX3NtYXJ0X2NoYWluLXRlc3RuZXQQ+62+nICu5Iq4AQoYCgxjZWxvLW1haW5uZXQQhtTo2IaTiNcSChoKDmNyb25vcy10ZXN0bmV0EP3Z7q3g3trIKQoiChVkdGNjLXRlc3RuZXQtYW5kZXNpdGUQ0oPj0JmW5aTXAQocChBldGhlcmV1bS1tYWlubmV0EJX28eTPsqbCRQonChtldGhlcmV1bS1tYWlubmV0LWFyYml0cnVtLTEQxOiNzY6boddECiQKF2V0aGVyZXVtLW1haW5uZXQtYmFzZS0xEIL/q6L+uZDT3QEKIgoWZXRoZXJldW0tbWFpbm5ldC1pbmstMRCgsKbpt+aqhDAKJAoYZXRoZXJldW0tbWFpbm5ldC1saW5lYS0xELa66ZjLvbCbQAolChlldGhlcmV1bS1tYWlubmV0LW1hbnRsZS0xEIrntJXnsIPMFQonChtldGhlcmV1bS1tYWlubmV0LW9wdGltaXNtLTEQuJWPw/f+0OkzCiYKGWV0aGVyZXVtLW1haW5uZXQtc2Nyb2xsLTEQuLzk68S+yJ+3AQopCh1ldGhlcmV1bS1tYWlubmV0LXdvcmxkY2hhaW4tMRCH77q3xbbCuBwKJQoZZXRoZXJldW0tbWFpbm5ldC14bGF5ZXItMRCWpfycpqjv7SkKJQoZZXRoZXJldW0tbWFpbm5ldC16a3N5bmMtMRCU7pfZ7bSx1xUKJQoYZXRoZXJldW0tdGVzdG5ldC1zZXBvbGlhENm15M78ye6g3gEKLwojZXRoZXJldW0tdGVzdG5ldC1zZXBvbGlhLWFyYml0cnVtLTEQ6s7u/+q2hKMwCiwKH2V0aGVyZXVtLXRlc3RuZXQtc2Vwb2xpYS1iYXNlLTEQuMq57/aQrsiPAQosCiBldGhlcmV1bS10ZXN0bmV0LXNlcG9saWEtbGluZWEtMRDrqtT+gvnmr08KLQohZXRoZXJldW0tdGVzdG5ldC1zZXBvbGlhLW1hbnRsZS0xENXGuO7N9vKmcgovCiNldGhlcmV1bS10ZXN0bmV0LXNlcG9saWEtb3B0aW1pc20tMRCfhsWhvtjDwEgKLQohZXRoZXJldW0tdGVzdG5ldC1zZXBvbGlhLXNjcm9sbC0xEIvptL7buu3RHwowCiNldGhlcmV1bS10ZXN0bmV0LXNlcG9saWEtdW5pY2hhaW4tMRC03v7g7JeplsQBCjEKJWV0aGVyZXVtLXRlc3RuZXQtc2Vwb2xpYS13b3JsZGNoYWluLTEQut/gxcep88VJCi0KIWV0aGVyZXVtLXRlc3RuZXQtc2Vwb2xpYS16a3N5bmMtMRC3wfz98sSA3l8KIAoUZ25vc2lzX2NoYWluLW1haW5uZXQQ9JKt2vKirroGCh8KE2h5cGVybGlxdWlkLXRlc3RuZXQQiM7dyJfgyb07CiAKE2luay10ZXN0bmV0LXNlcG9saWEQ6PSnpfPmlsCHAQoZCg1qb3ZheS1tYWlubmV0ELXDxJqhgN+SFQoZCg1qb3ZheS10ZXN0bmV0EOTPioTest6ODQobCg9tZWdhZXRoLW1haW5uZXQQ6pW2yLzkpshUCh4KEW1lZ2FldGgtdGVzdG5ldC0yEOON3oixj/2T/QEKJAoXcGhhcm9zLWF0bGFudGljLXRlc3RuZXQQzJnt4M68r7TfAQoaCg5waGFyb3MtbWFpbm5ldBDIwYee9e/NoWwKGwoOcGxhc21hLW1haW5uZXQQ+Jvx0drJ1caBAQoaCg5wbGFzbWEtdGVzdG5ldBDVm7+lw7SZhzcKGwoPcG9seWdvbi1tYWlubmV0ELGr5PCakoadOAohChRwb2x5Z29uLXRlc3RuZXQtYW1veRDNj9bf8ceQ+uEBCiQKGHByaXZhdGUtdGVzdG5ldC1hbmRlc2l0ZRDUppilwY/c/F8KGQoNc29uaWMtbWFpbm5ldBDRsuXt2aCynRcKGQoNc29uaWMtdGVzdG5ldBDIiPvUtMb6vBgKGAoLdGFjLXRlc3RuZXQQ1duN4/ufk9eDAQobCg54bGF5ZXItdGVzdG5ldBDJvqG0rcy83Y0BQuUBCidjb20uY2FwYWJpbGl0aWVzLmJsb2NrY2hhaW4uZXZtLnYxYWxwaGFCC0NsaWVudFByb3RvUAGiAgNDQkWqAiNDYXBhYmlsaXRpZXMuQmxvY2tjaGFpbi5Fdm0uVjFhbHBoYcoCI0NhcGFiaWxpdGllc1xCbG9ja2NoYWluXEV2bVxWMWFscGhh4gIvQ2FwYWJpbGl0aWVzXEJsb2NrY2hhaW5cRXZtXFYxYWxwaGFcR1BCTWV0YWRhdGHqAiZDYXBhYmlsaXRpZXM6OkJsb2NrY2hhaW46OkV2bTo6VjFhbHBoYWIGcHJvdG8z", [file_sdk_v1alpha_sdk, file_tools_generator_v1alpha_cre_metadata, file_values_v1_values]);
-var FilterLogTriggerRequestSchema = /* @__PURE__ */ messageDesc(file_capabilities_blockchain_evm_v1alpha_client, 1);
-var CallContractRequestSchema = /* @__PURE__ */ messageDesc(file_capabilities_blockchain_evm_v1alpha_client, 2);
-var CallContractReplySchema = /* @__PURE__ */ messageDesc(file_capabilities_blockchain_evm_v1alpha_client, 3);
-var FilterLogsRequestSchema = /* @__PURE__ */ messageDesc(file_capabilities_blockchain_evm_v1alpha_client, 4);
-var FilterLogsReplySchema = /* @__PURE__ */ messageDesc(file_capabilities_blockchain_evm_v1alpha_client, 5);
-var LogSchema = /* @__PURE__ */ messageDesc(file_capabilities_blockchain_evm_v1alpha_client, 6);
-var BalanceAtRequestSchema = /* @__PURE__ */ messageDesc(file_capabilities_blockchain_evm_v1alpha_client, 10);
-var BalanceAtReplySchema = /* @__PURE__ */ messageDesc(file_capabilities_blockchain_evm_v1alpha_client, 11);
-var EstimateGasRequestSchema = /* @__PURE__ */ messageDesc(file_capabilities_blockchain_evm_v1alpha_client, 12);
-var EstimateGasReplySchema = /* @__PURE__ */ messageDesc(file_capabilities_blockchain_evm_v1alpha_client, 13);
-var GetTransactionByHashRequestSchema = /* @__PURE__ */ messageDesc(file_capabilities_blockchain_evm_v1alpha_client, 14);
-var GetTransactionByHashReplySchema = /* @__PURE__ */ messageDesc(file_capabilities_blockchain_evm_v1alpha_client, 15);
-var GetTransactionReceiptRequestSchema = /* @__PURE__ */ messageDesc(file_capabilities_blockchain_evm_v1alpha_client, 17);
-var GetTransactionReceiptReplySchema = /* @__PURE__ */ messageDesc(file_capabilities_blockchain_evm_v1alpha_client, 18);
-var HeaderByNumberRequestSchema = /* @__PURE__ */ messageDesc(file_capabilities_blockchain_evm_v1alpha_client, 20);
-var HeaderByNumberReplySchema = /* @__PURE__ */ messageDesc(file_capabilities_blockchain_evm_v1alpha_client, 21);
-var WriteReportRequestSchema = /* @__PURE__ */ messageDesc(file_capabilities_blockchain_evm_v1alpha_client, 23);
-var GasConfigSchema = /* @__PURE__ */ messageDesc(file_capabilities_blockchain_evm_v1alpha_client, 24);
-var WriteReportReplySchema = /* @__PURE__ */ messageDesc(file_capabilities_blockchain_evm_v1alpha_client, 25);
 var ConfidenceLevel;
 (function(ConfidenceLevel2) {
   ConfidenceLevel2[ConfidenceLevel2["SAFE"] = 0] = "SAFE";
@@ -6870,322 +6850,6 @@ class Report {
     return this.report;
   }
 }
-var hexToBytes = (hexStr) => {
-  if (!hexStr.startsWith("0x")) {
-    throw new Error(`Invalid hex string: ${hexStr}`);
-  }
-  if (!/^0x[0-9a-fA-F]*$/.test(hexStr)) {
-    throw new Error(`Invalid hex string: ${hexStr}`);
-  }
-  if ((hexStr.length - 2) % 2 !== 0) {
-    throw new Error(`Hex string must have an even number of characters: ${hexStr}`);
-  }
-  const hex = hexStr.slice(2);
-  const bytes = new Uint8Array(hex.length / 2);
-  for (let i = 0;i < hex.length; i += 2) {
-    bytes[i / 2] = Number.parseInt(hex.slice(i, i + 2), 16);
-  }
-  return bytes;
-};
-var bytesToHex = (bytes) => {
-  return `0x${Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("")}`;
-};
-var hexToBase64 = (hex) => {
-  const cleanHex = hex.startsWith("0x") ? hex.slice(2) : hex;
-  if (cleanHex.length === 0) {
-    return "";
-  }
-  if (cleanHex.length % 2 !== 0) {
-    throw new Error(`Hex string must have an even number of characters: ${hex}`);
-  }
-  if (!/^[0-9a-fA-F]*$/.test(cleanHex)) {
-    throw new Error(`Invalid hex string: ${hex}`);
-  }
-  return Buffer.from(cleanHex, "hex").toString("base64");
-};
-function createWriteCreReportRequest(input) {
-  return {
-    receiver: hexToBytes(input.receiver),
-    report: input.report,
-    gasConfig: input.gasConfig !== undefined ? fromJson(GasConfigSchema, input.gasConfig) : undefined,
-    $report: true
-  };
-}
-function x_generatedCodeOnly_unwrap_WriteCreReportRequest(input) {
-  return create(WriteReportRequestSchema, {
-    receiver: input.receiver,
-    report: input.report !== undefined ? input.report.x_generatedCodeOnly_unwrap() : undefined,
-    gasConfig: input.gasConfig
-  });
-}
-
-class ClientCapability {
-  ChainSelector;
-  static CAPABILITY_ID = "evm@1.0.0";
-  static CAPABILITY_NAME = "evm";
-  static CAPABILITY_VERSION = "1.0.0";
-  static SUPPORTED_CHAIN_SELECTORS = {
-    "apechain-testnet-curtis": 9900119385908781505n,
-    "arc-testnet": 3034092155422581607n,
-    "avalanche-mainnet": 6433500567565415381n,
-    "avalanche-testnet-fuji": 14767482510784806043n,
-    "binance_smart_chain-mainnet": 11344663589394136015n,
-    "binance_smart_chain-testnet": 13264668187771770619n,
-    "celo-mainnet": 1346049177634351622n,
-    "cronos-testnet": 2995292832068775165n,
-    "dtcc-testnet-andesite": 15513093881969820114n,
-    "ethereum-mainnet": 5009297550715157269n,
-    "ethereum-mainnet-arbitrum-1": 4949039107694359620n,
-    "ethereum-mainnet-base-1": 15971525489660198786n,
-    "ethereum-mainnet-ink-1": 3461204551265785888n,
-    "ethereum-mainnet-linea-1": 4627098889531055414n,
-    "ethereum-mainnet-mantle-1": 1556008542357238666n,
-    "ethereum-mainnet-optimism-1": 3734403246176062136n,
-    "ethereum-mainnet-scroll-1": 13204309965629103672n,
-    "ethereum-mainnet-worldchain-1": 2049429975587534727n,
-    "ethereum-mainnet-xlayer-1": 3016212468291539606n,
-    "ethereum-mainnet-zksync-1": 1562403441176082196n,
-    "ethereum-testnet-sepolia": 16015286601757825753n,
-    "ethereum-testnet-sepolia-arbitrum-1": 3478487238524512106n,
-    "ethereum-testnet-sepolia-base-1": 10344971235874465080n,
-    "ethereum-testnet-sepolia-linea-1": 5719461335882077547n,
-    "ethereum-testnet-sepolia-mantle-1": 8236463271206331221n,
-    "ethereum-testnet-sepolia-optimism-1": 5224473277236331295n,
-    "ethereum-testnet-sepolia-scroll-1": 2279865765895943307n,
-    "ethereum-testnet-sepolia-unichain-1": 14135854469784514356n,
-    "ethereum-testnet-sepolia-worldchain-1": 5299555114858065850n,
-    "ethereum-testnet-sepolia-zksync-1": 6898391096552792247n,
-    "gnosis_chain-mainnet": 465200170687744372n,
-    "hyperliquid-testnet": 4286062357653186312n,
-    "ink-testnet-sepolia": 9763904284804119144n,
-    "jovay-mainnet": 1523760397290643893n,
-    "jovay-testnet": 945045181441419236n,
-    "megaeth-mainnet": 6093540873831549674n,
-    "megaeth-testnet-2": 18241817625092392675n,
-    "pharos-atlantic-testnet": 16098325658947243212n,
-    "pharos-mainnet": 7801139999541420232n,
-    "plasma-mainnet": 9335212494177455608n,
-    "plasma-testnet": 3967220077692964309n,
-    "polygon-mainnet": 4051577828743386545n,
-    "polygon-testnet-amoy": 16281711391670634445n,
-    "private-testnet-andesite": 6915682381028791124n,
-    "sonic-mainnet": 1673871237479749969n,
-    "sonic-testnet": 1763698235108410440n,
-    "tac-testnet": 9488606126177218005n,
-    "xlayer-testnet": 10212741611335999305n
-  };
-  constructor(ChainSelector) {
-    this.ChainSelector = ChainSelector;
-  }
-  callContract(runtime, input) {
-    let payload;
-    if (input.$typeName) {
-      payload = input;
-    } else {
-      payload = fromJson(CallContractRequestSchema, input);
-    }
-    const capabilityId = `${ClientCapability.CAPABILITY_NAME}:ChainSelector:${this.ChainSelector}@${ClientCapability.CAPABILITY_VERSION}`;
-    const capabilityResponse = runtime.callCapability({
-      capabilityId,
-      method: "CallContract",
-      payload,
-      inputSchema: CallContractRequestSchema,
-      outputSchema: CallContractReplySchema
-    });
-    return {
-      result: () => {
-        const result = capabilityResponse.result();
-        return result;
-      }
-    };
-  }
-  filterLogs(runtime, input) {
-    let payload;
-    if (input.$typeName) {
-      payload = input;
-    } else {
-      payload = fromJson(FilterLogsRequestSchema, input);
-    }
-    const capabilityId = `${ClientCapability.CAPABILITY_NAME}:ChainSelector:${this.ChainSelector}@${ClientCapability.CAPABILITY_VERSION}`;
-    const capabilityResponse = runtime.callCapability({
-      capabilityId,
-      method: "FilterLogs",
-      payload,
-      inputSchema: FilterLogsRequestSchema,
-      outputSchema: FilterLogsReplySchema
-    });
-    return {
-      result: () => {
-        const result = capabilityResponse.result();
-        return result;
-      }
-    };
-  }
-  balanceAt(runtime, input) {
-    let payload;
-    if (input.$typeName) {
-      payload = input;
-    } else {
-      payload = fromJson(BalanceAtRequestSchema, input);
-    }
-    const capabilityId = `${ClientCapability.CAPABILITY_NAME}:ChainSelector:${this.ChainSelector}@${ClientCapability.CAPABILITY_VERSION}`;
-    const capabilityResponse = runtime.callCapability({
-      capabilityId,
-      method: "BalanceAt",
-      payload,
-      inputSchema: BalanceAtRequestSchema,
-      outputSchema: BalanceAtReplySchema
-    });
-    return {
-      result: () => {
-        const result = capabilityResponse.result();
-        return result;
-      }
-    };
-  }
-  estimateGas(runtime, input) {
-    let payload;
-    if (input.$typeName) {
-      payload = input;
-    } else {
-      payload = fromJson(EstimateGasRequestSchema, input);
-    }
-    const capabilityId = `${ClientCapability.CAPABILITY_NAME}:ChainSelector:${this.ChainSelector}@${ClientCapability.CAPABILITY_VERSION}`;
-    const capabilityResponse = runtime.callCapability({
-      capabilityId,
-      method: "EstimateGas",
-      payload,
-      inputSchema: EstimateGasRequestSchema,
-      outputSchema: EstimateGasReplySchema
-    });
-    return {
-      result: () => {
-        const result = capabilityResponse.result();
-        return result;
-      }
-    };
-  }
-  getTransactionByHash(runtime, input) {
-    let payload;
-    if (input.$typeName) {
-      payload = input;
-    } else {
-      payload = fromJson(GetTransactionByHashRequestSchema, input);
-    }
-    const capabilityId = `${ClientCapability.CAPABILITY_NAME}:ChainSelector:${this.ChainSelector}@${ClientCapability.CAPABILITY_VERSION}`;
-    const capabilityResponse = runtime.callCapability({
-      capabilityId,
-      method: "GetTransactionByHash",
-      payload,
-      inputSchema: GetTransactionByHashRequestSchema,
-      outputSchema: GetTransactionByHashReplySchema
-    });
-    return {
-      result: () => {
-        const result = capabilityResponse.result();
-        return result;
-      }
-    };
-  }
-  getTransactionReceipt(runtime, input) {
-    let payload;
-    if (input.$typeName) {
-      payload = input;
-    } else {
-      payload = fromJson(GetTransactionReceiptRequestSchema, input);
-    }
-    const capabilityId = `${ClientCapability.CAPABILITY_NAME}:ChainSelector:${this.ChainSelector}@${ClientCapability.CAPABILITY_VERSION}`;
-    const capabilityResponse = runtime.callCapability({
-      capabilityId,
-      method: "GetTransactionReceipt",
-      payload,
-      inputSchema: GetTransactionReceiptRequestSchema,
-      outputSchema: GetTransactionReceiptReplySchema
-    });
-    return {
-      result: () => {
-        const result = capabilityResponse.result();
-        return result;
-      }
-    };
-  }
-  headerByNumber(runtime, input) {
-    let payload;
-    if (input.$typeName) {
-      payload = input;
-    } else {
-      payload = fromJson(HeaderByNumberRequestSchema, input);
-    }
-    const capabilityId = `${ClientCapability.CAPABILITY_NAME}:ChainSelector:${this.ChainSelector}@${ClientCapability.CAPABILITY_VERSION}`;
-    const capabilityResponse = runtime.callCapability({
-      capabilityId,
-      method: "HeaderByNumber",
-      payload,
-      inputSchema: HeaderByNumberRequestSchema,
-      outputSchema: HeaderByNumberReplySchema
-    });
-    return {
-      result: () => {
-        const result = capabilityResponse.result();
-        return result;
-      }
-    };
-  }
-  logTrigger(config) {
-    const capabilityId = `${ClientCapability.CAPABILITY_NAME}:ChainSelector:${this.ChainSelector}@${ClientCapability.CAPABILITY_VERSION}`;
-    return new ClientLogTrigger(config, capabilityId, "LogTrigger", this.ChainSelector);
-  }
-  writeReport(runtime, input) {
-    let payload;
-    if (input.$report) {
-      payload = x_generatedCodeOnly_unwrap_WriteCreReportRequest(input);
-    } else {
-      payload = x_generatedCodeOnly_unwrap_WriteCreReportRequest(createWriteCreReportRequest(input));
-    }
-    const capabilityId = `${ClientCapability.CAPABILITY_NAME}:ChainSelector:${this.ChainSelector}@${ClientCapability.CAPABILITY_VERSION}`;
-    const capabilityResponse = runtime.callCapability({
-      capabilityId,
-      method: "WriteReport",
-      payload,
-      inputSchema: WriteReportRequestSchema,
-      outputSchema: WriteReportReplySchema
-    });
-    return {
-      result: () => {
-        const result = capabilityResponse.result();
-        return result;
-      }
-    };
-  }
-}
-
-class ClientLogTrigger {
-  _capabilityId;
-  _method;
-  ChainSelector;
-  config;
-  constructor(config, _capabilityId, _method, ChainSelector) {
-    this._capabilityId = _capabilityId;
-    this._method = _method;
-    this.ChainSelector = ChainSelector;
-    this.config = config.$typeName ? config : fromJson(FilterLogTriggerRequestSchema, config);
-  }
-  capabilityId() {
-    return this._capabilityId;
-  }
-  method() {
-    return this._method;
-  }
-  outputSchema() {
-    return LogSchema;
-  }
-  configAsAny() {
-    return anyPack(FilterLogTriggerRequestSchema, this.config);
-  }
-  adapt(rawOutput) {
-    return rawOutput;
-  }
-}
 var file_capabilities_networking_http_v1alpha_client = /* @__PURE__ */ fileDesc("CjFjYXBhYmlsaXRpZXMvbmV0d29ya2luZy9odHRwL3YxYWxwaGEvY2xpZW50LnByb3RvEiRjYXBhYmlsaXRpZXMubmV0d29ya2luZy5odHRwLnYxYWxwaGEiSgoNQ2FjaGVTZXR0aW5ncxINCgVzdG9yZRgBIAEoCBIqCgdtYXhfYWdlGAIgASgLMhkuZ29vZ2xlLnByb3RvYnVmLkR1cmF0aW9uIh4KDEhlYWRlclZhbHVlcxIOCgZ2YWx1ZXMYASADKAki7wMKB1JlcXVlc3QSCwoDdXJsGAEgASgJEg4KBm1ldGhvZBgCIAEoCRJPCgdoZWFkZXJzGAMgAygLMjouY2FwYWJpbGl0aWVzLm5ldHdvcmtpbmcuaHR0cC52MWFscGhhLlJlcXVlc3QuSGVhZGVyc0VudHJ5QgIYARIMCgRib2R5GAQgASgMEioKB3RpbWVvdXQYBSABKAsyGS5nb29nbGUucHJvdG9idWYuRHVyYXRpb24SSwoOY2FjaGVfc2V0dGluZ3MYBiABKAsyMy5jYXBhYmlsaXRpZXMubmV0d29ya2luZy5odHRwLnYxYWxwaGEuQ2FjaGVTZXR0aW5ncxJWCg1tdWx0aV9oZWFkZXJzGAcgAygLMj8uY2FwYWJpbGl0aWVzLm5ldHdvcmtpbmcuaHR0cC52MWFscGhhLlJlcXVlc3QuTXVsdGlIZWFkZXJzRW50cnkaLgoMSGVhZGVyc0VudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoCToCOAEaZwoRTXVsdGlIZWFkZXJzRW50cnkSCwoDa2V5GAEgASgJEkEKBXZhbHVlGAIgASgLMjIuY2FwYWJpbGl0aWVzLm5ldHdvcmtpbmcuaHR0cC52MWFscGhhLkhlYWRlclZhbHVlczoCOAEi8QIKCFJlc3BvbnNlEhMKC3N0YXR1c19jb2RlGAEgASgNElAKB2hlYWRlcnMYAiADKAsyOy5jYXBhYmlsaXRpZXMubmV0d29ya2luZy5odHRwLnYxYWxwaGEuUmVzcG9uc2UuSGVhZGVyc0VudHJ5QgIYARIMCgRib2R5GAMgASgMElcKDW11bHRpX2hlYWRlcnMYBCADKAsyQC5jYXBhYmlsaXRpZXMubmV0d29ya2luZy5odHRwLnYxYWxwaGEuUmVzcG9uc2UuTXVsdGlIZWFkZXJzRW50cnkaLgoMSGVhZGVyc0VudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoCToCOAEaZwoRTXVsdGlIZWFkZXJzRW50cnkSCwoDa2V5GAEgASgJEkEKBXZhbHVlGAIgASgLMjIuY2FwYWJpbGl0aWVzLm5ldHdvcmtpbmcuaHR0cC52MWFscGhhLkhlYWRlclZhbHVlczoCOAEymAEKBkNsaWVudBJsCgtTZW5kUmVxdWVzdBItLmNhcGFiaWxpdGllcy5uZXR3b3JraW5nLmh0dHAudjFhbHBoYS5SZXF1ZXN0Gi4uY2FwYWJpbGl0aWVzLm5ldHdvcmtpbmcuaHR0cC52MWFscGhhLlJlc3BvbnNlGiCCtRgcCAISGGh0dHAtYWN0aW9uc0AxLjAuMC1hbHBoYULqAQooY29tLmNhcGFiaWxpdGllcy5uZXR3b3JraW5nLmh0dHAudjFhbHBoYUILQ2xpZW50UHJvdG9QAaICA0NOSKoCJENhcGFiaWxpdGllcy5OZXR3b3JraW5nLkh0dHAuVjFhbHBoYcoCJENhcGFiaWxpdGllc1xOZXR3b3JraW5nXEh0dHBcVjFhbHBoYeICMENhcGFiaWxpdGllc1xOZXR3b3JraW5nXEh0dHBcVjFhbHBoYVxHUEJNZXRhZGF0YeoCJ0NhcGFiaWxpdGllczo6TmV0d29ya2luZzo6SHR0cDo6VjFhbHBoYWIGcHJvdG8z", [file_google_protobuf_duration, file_tools_generator_v1alpha_cre_metadata]);
 var RequestSchema = /* @__PURE__ */ messageDesc(file_capabilities_networking_http_v1alpha_client, 2);
 var ResponseSchema = /* @__PURE__ */ messageDesc(file_capabilities_networking_http_v1alpha_client, 3);
@@ -7202,7 +6866,7 @@ class SendRequester {
   }
 }
 
-class ClientCapability2 {
+class ClientCapability {
   static CAPABILITY_ID = "http-actions@1.0.0-alpha";
   static CAPABILITY_NAME = "http-actions";
   static CAPABILITY_VERSION = "1.0.0-alpha";
@@ -7221,7 +6885,7 @@ class ClientCapability2 {
     } else {
       payload = fromJson(RequestSchema, input);
     }
-    const capabilityId = ClientCapability2.CAPABILITY_ID;
+    const capabilityId = ClientCapability.CAPABILITY_ID;
     const capabilityResponse = runtime.callCapability({
       capabilityId,
       method: "SendRequest",
@@ -8990,7 +8654,7 @@ function sendRequesterSendReport(report, fn) {
   const request = fn(rawReport);
   return this.sendRequest(request);
 }
-ClientCapability2.prototype.sendReport = sendReport;
+ClientCapability.prototype.sendReport = sendReport;
 SendRequester.prototype.sendReport = sendRequesterSendReport;
 var network = {
   chainId: "1",
@@ -13084,7 +12748,6 @@ var defaultLookup = new NetworkLookup({
   testnetBySelector,
   testnetBySelectorByFamily
 });
-var getNetwork = (options) => defaultLookup.find(options);
 function consensusIdenticalAggregation() {
   return simpleConsensus(AggregationType.IDENTICAL);
 }
@@ -18015,6 +17678,8 @@ init_exports();
 init_sha2();
 var sha2562 = sha256;
 init_encodeAbiParameters();
+init_toHex();
+init_keccak256();
 init_sha2();
 init_utils2();
 init_curve();
@@ -18248,7 +17913,7 @@ function edwards(params, extraOpts = {}) {
       return bytes;
     }
     toHex() {
-      return bytesToHex3(this.toBytes());
+      return bytesToHex2(this.toBytes());
     }
     toString() {
       return `<Point ${this.is0() ? "ZERO" : this.toHex()}>`;
@@ -18313,7 +17978,7 @@ class PrimeEdwardsPoint {
     return this.ep.toAffine(invertedZ);
   }
   toHex() {
-    return bytesToHex3(this.toBytes());
+    return bytesToHex2(this.toBytes());
   }
   toString() {
     return this.toHex();
@@ -19521,8 +19186,23 @@ function isEncrypted(value2) {
     return true;
   return value2.startsWith("eyJ") && value2.length > 50;
 }
+function deriveMode(intent) {
+  if (intent.isRailgun)
+    return 0;
+  if (intent.isOfframp)
+    return 1;
+  return 2;
+}
 var PORTALS_PRICE_CHAIN = "ethereum";
 var SEPOLIA_CHAIN_ID = 11155111;
+var MAINNET_TOKENS = {
+  USDC: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+  WETH: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+  DAI: "0x6B175474E89094C44Da98b954EedeAC495271d0F",
+  USDT: "0xdAC17F958D2ee523a2206206994597C13D831ec7",
+  WBTC: "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599",
+  LINK: "0x514910771AF9Ca656af840dff83E8264EcF986CA"
+};
 var SEPOLIA_TOKENS = {
   USDC: "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
   WETH: "0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9",
@@ -19533,8 +19213,13 @@ var SEPOLIA_TOKENS = {
   EURe: "0x67b34b93ac295c985e856E5B8A20D83026b580Eb"
 };
 function buildPriceUrl(symbols) {
-  const searchQuery = symbols.join(" ");
-  return `https://api.portals.fi/v2/tokens?search=${encodeURIComponent(searchQuery)}&networks=${PORTALS_PRICE_CHAIN}&limit=250`;
+  const addressParams = symbols.map((s) => {
+    const addr = MAINNET_TOKENS[s.toUpperCase()];
+    if (!addr)
+      throw new Error(`No mainnet address for price lookup: ${s}`);
+    return `addresses=${PORTALS_PRICE_CHAIN}:${addr}`;
+  }).join("&");
+  return `https://api.portals.fi/v2/tokens?${addressParams}`;
 }
 function evalOp(price, op, threshold) {
   switch (op) {
@@ -19628,7 +19313,7 @@ var onHttpTrigger = (runtime2, payload) => {
       ...tokenIntent,
       chain: envelope?.eventChain ?? tokenIntent.chain,
       destinationChain: envelope?.destinationChain ?? tokenIntent.destinationChain,
-      subnameString: envelope?.subnameString ?? tokenIntent.subnameString,
+      salt: tokenIntent.salt ?? envelope?.subnameString ?? tokenIntent.subnameString,
       sender: envelope?.accountAddress ?? tokenIntent.sender,
       receiver: envelope?.forwardTo ?? tokenIntent.receiver
     };
@@ -19637,8 +19322,9 @@ var onHttpTrigger = (runtime2, payload) => {
   } else {
     intent = JSON.parse(rawInput);
   }
+  const salt = intent.salt ? intent.salt : keccak256(toHex(intent.subnameString ?? ""));
   runtime2.log(`Intent: ${intent.inputAmount} ${intent.inputToken} source=${intent.chain} priceChain=${PORTALS_PRICE_CHAIN}`);
-  runtime2.log(`SA (sender)=${intent.sender}, receiver=${intent.receiver}, subname=${intent.subnameString}`);
+  runtime2.log(`SA (sender)=${intent.sender}, receiver=${intent.receiver}, salt=${salt}`);
   const portalsKey = runtime2.getSecret({ id: "PORTALS_API_KEY" }).result();
   const apiKey = portalsKey.value;
   const priceTokens = new Set;
@@ -19651,7 +19337,7 @@ var onHttpTrigger = (runtime2, payload) => {
   const symbolList = [...priceTokens];
   const priceUrl = buildPriceUrl(symbolList);
   runtime2.log(`Fetching prices from Portals on ${PORTALS_PRICE_CHAIN} for: ${symbolList.join(", ")}`);
-  const httpClient = new ClientCapability2;
+  const httpClient = new ClientCapability;
   const priceBody = httpClient.sendRequest(runtime2, apiGet(priceUrl, apiKey, "Price fetch"), consensusIdenticalAggregation())().result();
   const priceData = JSON.parse(priceBody);
   const prices = {};
@@ -19705,42 +19391,34 @@ var onHttpTrigger = (runtime2, payload) => {
   const targets = swapResult.targets;
   const values = swapResult.values.map((v) => BigInt(v));
   const calldatas = swapResult.calldatas;
-  const encodedReport = encodeAbiParameters(parseAbiParameters("string, address, address[], uint256[], bytes[]"), [
-    intent.subnameString,
-    intent.receiver,
+  const touchedSet = new Set;
+  touchedSet.add(resolveSepoliaAddress(intent.inputToken).toLowerCase());
+  for (const action of selectedActions) {
+    if (action.percent > 0 && action.actionType === "swap") {
+      touchedSet.add(resolveSepoliaAddress(action.outputToken).toLowerCase());
+    }
+  }
+  const touchedTokens = [...touchedSet];
+  const isSweepable = true;
+  const mode = deriveMode(intent);
+  const modeLabels = ["Railgun", "OffRamp", "ForwardTo"];
+  const hashedOwner = intent.hashedOwner;
+  runtime2.log(`Touched tokens: ${touchedTokens.join(", ")}, sweepable: ${isSweepable}, mode: ${modeLabels[mode]}`);
+  const encodedReport = encodeAbiParameters(parseAbiParameters("bytes32, bytes32, address[], uint256[], bytes[], address[], bool, uint8"), [
+    salt,
+    hashedOwner,
     targets,
     values,
-    calldatas
+    calldatas,
+    touchedTokens,
+    isSweepable,
+    mode
   ]);
   runtime2.log(`Encoded report (${encodedReport.length} chars), ${targets.length} batch calls`);
-  const network282 = getNetwork({
-    chainFamily: "evm",
-    chainSelectorName: runtime2.config.chainSelectorName
-  });
-  if (!network282)
-    throw new Error(`Unknown chain: ${runtime2.config.chainSelectorName}`);
-  runtime2.log(`Target chain: ${runtime2.config.chainSelectorName}, registry: ${runtime2.config.registryAddress}`);
-  const reportResponse = runtime2.report({
-    encodedPayload: hexToBase64(encodedReport),
-    encoderName: "evm",
-    signingAlgo: "ecdsa",
-    hashingAlgo: "keccak256"
-  }).result();
-  const evmClient = new ClientCapability(network282.chainSelector.selector);
-  const writeResult = evmClient.writeReport(runtime2, {
-    receiver: runtime2.config.registryAddress,
-    report: reportResponse,
-    gasConfig: { gasLimit: "500000" }
-  }).result();
-  if (writeResult.txStatus === TxStatus.SUCCESS) {
-    const txHash = bytesToHex(writeResult.txHash || new Uint8Array(32));
-    runtime2.log(`writeReport SUCCESS: ${txHash}`);
-  } else {
-    runtime2.log(`writeReport status: ${writeResult.txStatus}`);
-  }
+  runtime2.log(`SUCCESS: report ready for salt=${salt}, ${targets.length} batch calls encoded`);
   return JSON.stringify({
     ok: true,
-    subnameString: intent.subnameString,
+    salt,
     sender: intent.sender,
     receiver: intent.receiver,
     prices,
@@ -19751,13 +19429,6 @@ var onHttpTrigger = (runtime2, payload) => {
 };
 var initWorkflow = (config) => {
   const http = new HTTPCapability;
-  const network282 = getNetwork({
-    chainFamily: "evm",
-    chainSelectorName: config.chainSelectorName
-  });
-  if (network282) {
-    new ClientCapability(network282.chainSelector.selector);
-  }
   return [
     handler(http.trigger({
       authorizedKeys: config.authorizedKeys

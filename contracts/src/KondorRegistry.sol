@@ -5,8 +5,8 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IReceiver} from "./interfaces/IReceiver.sol";
 import {SimpleAccount} from "./SimpleAccount.sol";
 
-/// @title RnsRegistry — Factory + router for subdomain-based smart accounts
-/// @notice Deploys SimpleAccounts via CREATE2 keyed by subdomain string.
+/// @title KondorRegistry — Factory + router for salt-keyed smart accounts
+/// @notice Deploys SimpleAccounts via CREATE2 keyed by a bytes32 salt.
 ///         Receives CRE reports and forwards calldata batches to the target account.
 contract KondorRegistry is IReceiver, Ownable {
     // -----------------------------------------------------------------------
@@ -16,18 +16,22 @@ contract KondorRegistry is IReceiver, Ownable {
     /// @notice The trusted Chainlink Forwarder that may call onReport.
     address public forwarder;
 
-    /// @notice subdomain hash → deployed SimpleAccount address
+    /// @notice Railgun shielder contract address.
+    address public railgunShielder;
+
+    /// @notice salt → deployed SimpleAccount address
     mapping(bytes32 => address) public accounts;
 
-    /// @notice subdomain hash → owner address
-    mapping(bytes32 => address) public subdomainOwners;
 
     // -----------------------------------------------------------------------
     // Events
     // -----------------------------------------------------------------------
 
-    event AccountCreated(string indexed subdomain, address account, address owner);
-    event ReportProcessed(string subdomain, uint256 callCount);
+    // 0 = Railgun (private), 1 = OffRamp (cash out), 2 = ForwardTo (send to receiver)
+    enum Mode { Railgun, OffRamp, ForwardTo }
+
+    event AccountCreated(bytes32 indexed salt, address account, bytes32 hashedOwner);
+    event ReportProcessed(address indexed account, uint256 callCount, address[] touchedTokens, bool isSweepable, Mode mode);
     event ForwarderUpdated(address oldForwarder, address newForwarder);
 
     // -----------------------------------------------------------------------
@@ -35,8 +39,8 @@ contract KondorRegistry is IReceiver, Ownable {
     // -----------------------------------------------------------------------
 
     error UnauthorizedForwarder();
-    error AccountAlreadyExists(string subdomain);
-    error AccountDoesNotExist(string subdomain);
+    error AccountAlreadyExists(bytes32 salt);
+    error AccountDoesNotExist(bytes32 salt);
     error ArrayLengthMismatch();
 
     // -----------------------------------------------------------------------
@@ -53,29 +57,30 @@ contract KondorRegistry is IReceiver, Ownable {
     // -----------------------------------------------------------------------
 
     /// @notice Called by the Chainlink Forwarder with a CRE workflow report.
-    /// @dev For now the report is ABI-decoded as:
-    ///      (string subdomain, address owner, address[] targets, uint256[] values, bytes[] calldatas)
+    /// @dev Report is ABI-decoded as:
+    ///      (bytes32 salt, bytes32 hashedOwner, address[] targets, uint256[] values, bytes[] calldatas, address[] touchedTokens, bool isSweepable, uint8 mode)
     ///      - If the SA doesn't exist it is deployed + initialized first.
     ///      - Then batchExecute is called with the provided calldata array.
     function onReport(bytes calldata /* metadata */, bytes calldata report) external override {
-        // Gate: only the forwarder may call (skip if forwarder == address(0) for testing)
         if (forwarder != address(0) && msg.sender != forwarder) {
             revert UnauthorizedForwarder();
         }
 
         (
-            string memory subdomain,
-            address owner_,
+            bytes32 salt,
+            bytes32 hashedOwner_,
             address[] memory targets,
             uint256[] memory values,
-            bytes[] memory calldatas
-        ) = abi.decode(report, (string, address, address[], uint256[], bytes[]));
+            bytes[] memory calldatas,
+            address[] memory touchedTokens,
+            bool isSweepable,
+            uint8 mode_
+        ) = abi.decode(report, (bytes32, bytes32, address[], uint256[], bytes[], address[], bool, uint8));
 
         // Deploy account if it doesn't exist
-        bytes32 key = _subdomainKey(subdomain);
-        address account = accounts[key];
+        address account = accounts[salt];
         if (account == address(0)) {
-            account = _deployAccount(subdomain, owner_);
+            account = _deployAccount(salt, hashedOwner_);
         }
 
         // Execute batch if there is calldata
@@ -86,28 +91,27 @@ contract KondorRegistry is IReceiver, Ownable {
             SimpleAccount(payable(account)).batchExecute(targets, values, calldatas);
         }
 
-        emit ReportProcessed(subdomain, targets.length);
+        emit ReportProcessed(account, targets.length, touchedTokens, isSweepable, Mode(mode_));
     }
 
     // -----------------------------------------------------------------------
     // Account management (callable by owner for manual ops)
     // -----------------------------------------------------------------------
 
-    /// @notice Manually deploy + register an account for a subdomain.
-    function createAccount(string calldata subdomain, address owner_) external onlyOwner returns (address) {
-        return _deployAccount(subdomain, owner_);
+    /// @notice Manually deploy + register an account for a salt.
+    function createAccount(bytes32 salt, bytes32 hashedOwner_) external onlyOwner returns (address) {
+        return _deployAccount(salt, hashedOwner_);
     }
 
     /// @notice Execute a batch on an existing account (registry is authorized).
     function executeOnAccount(
-        string calldata subdomain,
+        bytes32 salt,
         address[] calldata targets,
         uint256[] calldata values,
         bytes[] calldata calldatas
     ) external onlyOwner {
-        bytes32 key = _subdomainKey(subdomain);
-        address account = accounts[key];
-        if (account == address(0)) revert AccountDoesNotExist(subdomain);
+        address account = accounts[salt];
+        if (account == address(0)) revert AccountDoesNotExist(salt);
         if (targets.length != values.length || targets.length != calldatas.length) {
             revert ArrayLengthMismatch();
         }
@@ -118,14 +122,13 @@ contract KondorRegistry is IReceiver, Ownable {
     // View helpers
     // -----------------------------------------------------------------------
 
-    /// @notice Get the account address for a subdomain (address(0) if not deployed).
-    function getAccount(string calldata subdomain) external view returns (address) {
-        return accounts[_subdomainKey(subdomain)];
+    /// @notice Get the account address for a salt (address(0) if not deployed).
+    function getAccount(bytes32 salt) external view returns (address) {
+        return accounts[salt];
     }
 
-    /// @notice Predict the CREATE2 address for a subdomain before deployment.
-    function predictAddress(string calldata subdomain) external view returns (address) {
-        bytes32 salt = _subdomainKey(subdomain);
+    /// @notice Predict the CREATE2 address for a salt before deployment.
+    function predictAddress(bytes32 salt) external view returns (address) {
         bytes32 hash = keccak256(
             abi.encodePacked(bytes1(0xff), address(this), salt, keccak256(type(SimpleAccount).creationCode))
         );
@@ -141,26 +144,23 @@ contract KondorRegistry is IReceiver, Ownable {
         forwarder = _forwarder;
     }
 
+    function setRailgunShielder(address _railgunShielder) external onlyOwner {
+        railgunShielder = _railgunShielder;
+    }
+
     // -----------------------------------------------------------------------
     // Internal
     // -----------------------------------------------------------------------
 
-    function _subdomainKey(string memory subdomain) internal pure returns (bytes32) {
-        return keccak256(abi.encodePacked(subdomain));
-    }
+    function _deployAccount(bytes32 salt, bytes32 hashedOwner_) internal returns (address) {
+        if (accounts[salt] != address(0)) revert AccountAlreadyExists(salt);
 
-    function _deployAccount(string memory subdomain, address owner_) internal returns (address) {
-        bytes32 key = _subdomainKey(subdomain);
-        if (accounts[key] != address(0)) revert AccountAlreadyExists(subdomain);
-
-        bytes32 salt = key;
         SimpleAccount account = new SimpleAccount{salt: salt}();
-        account.initialize(owner_, address(this));
+        account.initialize(hashedOwner_, address(this));
 
-        accounts[key] = address(account);
-        subdomainOwners[key] = owner_;
+        accounts[salt] = address(account);
 
-        emit AccountCreated(subdomain, address(account), owner_);
+        emit AccountCreated(salt, address(account), hashedOwner_);
         return address(account);
     }
 }
