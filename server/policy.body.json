@@ -1,0 +1,183 @@
+{
+    "destinationChain": "ethereum-sepolia",
+    "isRailgun": true,
+    "isOfframp": false,
+    "forwardTo": "0x8da91A6298eA5d1A8Bc985e99798fd0A0f05701a",
+    "tokens": [
+        {
+            "inputToken": "USDC",
+            "inputDecimals": 6,
+            "conditions": [
+                {
+                    "checks": [
+                        {
+                            "token": "WETH",
+                            "operator": "<",
+                            "threshold": 3000
+                        },
+                        {
+                            "token": "WETH",
+                            "operator": ">",
+                            "threshold": 1000
+                        }
+                    ],
+                    "actions": [
+                        {
+                            "actionType": "swap",
+                            "outputToken": "EURe",
+                            "percent": 10
+                        }
+                    ]
+                },
+                {
+                    "checks": [
+                        {
+                            "token": "WETH",
+                            "operator": "<",
+                            "threshold": 2000
+                        },
+                        {
+                            "token": "LINK",
+                            "operator": "<",
+                            "threshold": 8
+                        }
+                    ],
+                    "actions": [
+                        {
+                            "actionType": "swap",
+                            "outputToken": "EURe",
+                            "percent": 80
+                        }
+                    ]
+                }
+            ],
+            "elseActions": [
+                {
+                    "actionType": "swap",
+                    "outputToken": "WETH",
+                    "percent": 10
+                }
+            ]
+        },
+        {
+            "inputToken": "EURe",
+            "inputDecimals": 18,
+            "conditions": [
+                {
+                    "checks": [
+                        {
+                            "token": "WETH",
+                            "operator": "<",
+                            "threshold": 3000
+                        },
+                        {
+                            "token": "WETH",
+                            "operator": ">",
+                            "threshold": 1000
+                        }
+                    ],
+                    "actions": [
+                        {
+                            "actionType": "swap",
+                            "outputToken": "WETH",
+                            "percent": 10
+                        },
+                        {
+                            "actionType": "swap",
+                            "outputToken": "LINK",
+                            "percent": 50
+                        }
+                    ]
+                },
+                {
+                    "checks": [
+                        {
+                            "token": "WETH",
+                            "operator": "<",
+                            "threshold": 2000
+                        },
+                        {
+                            "token": "LINK",
+                            "operator": "<",
+                            "threshold": 8
+                        }
+                    ],
+                    "actions": [
+                        {
+                            "actionType": "swap",
+                            "outputToken": "LINK",
+                            "percent": 80
+                        }
+                    ]
+                }
+            ],
+            "elseActions": [
+                {
+                    "actionType": "swap",
+                    "outputToken": "WETH",
+                    "percent": 10
+                }
+            ]
+        },
+        {
+            "inputToken": "DAI",
+            "inputDecimals": 18,
+            "conditions": [
+                {
+                    "checks": [
+                        {
+                            "token": "WETH",
+                            "operator": "<",
+                            "threshold": 3000
+                        },
+                        {
+                            "token": "WETH",
+                            "operator": ">",
+                            "threshold": 1000
+                        }
+                    ],
+                    "actions": [
+                        {
+                            "actionType": "swap",
+                            "outputToken": "WETH",
+                            "percent": 10
+                        },
+                        {
+                            "actionType": "swap",
+                            "outputToken": "LINK",
+                            "percent": 50
+                        }
+                    ]
+                },
+                {
+                    "checks": [
+                        {
+                            "token": "WETH",
+                            "operator": "<",
+                            "threshold": 2000
+                        },
+                        {
+                            "token": "LINK",
+                            "operator": "<",
+                            "threshold": 8
+                        }
+                    ],
+                    "actions": [
+                        {
+                            "actionType": "swap",
+                            "outputToken": "LINK",
+                            "percent": 80
+                        }
+                    ]
+                }
+            ],
+            "elseActions": [
+                {
+                    "actionType": "swap",
+                    "outputToken": "WETH",
+                    "percent": 10
+                }
+            ]
+        }
+    ]
+}

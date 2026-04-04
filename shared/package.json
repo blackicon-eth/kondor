@@ -4,7 +4,8 @@
   "description": "Shared code used across frontend, server, and other packages.",
   "type": "module",
   "exports": {
-    "./db/*": "./db/*"
+    "./db/*": "./db/*",
+    "./crypto": "./crypto.ts"
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -16,6 +17,8 @@
     "drizzle-orm": "^0.45.2"
   },
   "dependencies": {
+    "@noble/ciphers": "^1.3.0",
+    "@noble/curves": "^1.9.0",
     "@noble/hashes": "^1.6.0"
   },
   "packageManager": "pnpm@10.25.0+sha512.5e82639027af37cf832061bcc6d639c219634488e0f2baebe785028a793de7b525ffcd3f7ff574f5e9860654e098fe852ba8ac5dd5cefe1767d23a020a92f501"

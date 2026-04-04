@@ -2,12 +2,12 @@
 pragma solidity ^0.8.28;
 
 /**
- * @title RnsOffchainResolver
- * @notice CCIP-Read (EIP-3668) offchain resolver for RNS subdomains.
+ * @title KondorOffchainResolver
+ * @notice CCIP-Read (EIP-3668) offchain resolver for Kondor subdomains.
  *         Supports wildcard resolution (ENSIP-10) so that any
  *         `<username>.yourdomain.eth` query is routed to the gateway.
  */
-contract RnsOffchainResolver {
+contract KondorOffchainResolver {
     // ── Storage ──────────────────────────────────────────────────────────
     string public url;        // Gateway URL template, e.g. "https://gw.example.com/gateway/{sender}/{data}.json"
     address public signer;    // Public key that signs gateway responses

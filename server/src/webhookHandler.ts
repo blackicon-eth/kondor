@@ -2,7 +2,8 @@ import { Request, Response } from "express";
 import { config } from "./config";
 import { AddressActivity, WebhookPayload } from "../../shared/types.js";
 import { normalizeAddress, verifyAlchemySignature } from "../../shared/utils.js";
-import { markStealthAddressTriggered } from "./gateway";
+import { markStealthAddressTriggered, getSubdomainByStealthAddress } from "./gateway";
+import { triggerCreWithPayload } from "./creTrigger";
 
 export interface WebhookHandlerDeps {
   watchedAddressSet: Set<string>;
@@ -19,6 +20,18 @@ function isTokenTransfer(activity: AddressActivity): boolean {
 
 function getRawToAddress(activity: AddressActivity): string {
   return (activity.toAddress || activity.to || "").trim();
+}
+
+interface StoredPolicy {
+  destinationChain: string;
+  isRailgun: boolean;
+  isOfframp: boolean;
+  forwardTo?: string;
+  tokens: Array<{
+    inputToken: string;
+    inputDecimals: number;
+    ciphertext: string;
+  }>;
 }
 
 export function createAlchemyWebhookHandler(deps: WebhookHandlerDeps) {
@@ -59,19 +72,111 @@ export function createAlchemyWebhookHandler(deps: WebhookHandlerDeps) {
 
     for (const { activity, to } of matched) {
       const asset = (activity.asset || "").toUpperCase();
+      const value = activity.value || activity.rawContract?.value || "0";
+      const decimals = parseInt(activity.rawContract?.decimal ?? "18", 10);
+      const from = activity.fromAddress || activity.from || "";
 
       console.log("[webhook] Incoming transfer:", {
         txHash: activity.hash,
-        from: activity.fromAddress || activity.from,
+        from,
         to,
         asset,
-        value: activity.value || activity.rawContract?.value || null,
-        decimals: activity.rawContract?.decimal ?? null,
+        value,
+        decimals,
         tokenContract: normalizeAddress(activity.rawContract?.address || ""),
       });
 
-      // TODO: look up subdomain policy from DB and trigger CRE workflow
       await markStealthAddressTriggered(to);
+
+      // Look up stealth address → user → policy
+      let record;
+      try {
+        record = await getSubdomainByStealthAddress(to);
+      } catch (err) {
+        console.error(`[webhook] Failed to lookup stealth address ${to}:`, err);
+        continue;
+      }
+
+      if (!record) {
+        console.log(`[webhook] No subdomain found for stealth address ${to}`);
+        continue;
+      }
+
+      // Parse kondor-policy from text records
+      const policyText = record.subdomain.text?.find(
+        (r: { key: string; value: string }) => r.key === "kondor-policy",
+      )?.value;
+
+      if (!policyText) {
+        console.log(`[webhook] No kondor-policy text record for ${record.ensSubdomain}`);
+        continue;
+      }
+
+      let policy: StoredPolicy;
+      try {
+        policy = JSON.parse(policyText);
+      } catch {
+        console.error(`[webhook] Invalid kondor-policy JSON for ${record.ensSubdomain}`);
+        continue;
+      }
+
+      // Find the matching token entry
+      const tokenEntry = policy.tokens?.find(
+        (t) => t.inputToken.toUpperCase() === asset,
+      );
+
+      if (!tokenEntry) {
+        console.log(`[webhook] No token entry for "${asset}" in policy of ${record.ensSubdomain}`);
+        continue;
+      }
+
+      // activity.value is already human-readable (e.g. "100" for 100 USDC)
+      // rawContract.value is hex/atomic — only divide if we fell back to it
+      const rawValue = activity.value;
+      const rawContractValue = activity.rawContract?.value;
+      let inputAmount: number;
+      if (rawValue && parseFloat(rawValue) > 0) {
+        inputAmount = parseFloat(rawValue);
+      } else if (rawContractValue) {
+        // rawContract.value is atomic (hex or decimal string)
+        const atomic = rawContractValue.startsWith("0x")
+          ? BigInt(rawContractValue)
+          : BigInt(rawContractValue);
+        inputAmount = Number(atomic) / 10 ** decimals;
+      } else {
+        console.log(`[webhook] No transfer value for ${asset}, skipping`);
+        continue;
+      }
+
+      // Build CRE payload
+      const crePayload = {
+        sender: to,
+        forwardTo: policy.forwardTo,
+        salt: record.salt,
+        hashedOwner: "0x0000000000000000000000000000000000000000000000000000000000000000",
+        chain: "ethereum-sepolia",
+        destinationChain: policy.destinationChain,
+        inputToken: tokenEntry.inputToken,
+        inputAmount,
+        inputDecimals: tokenEntry.inputDecimals,
+        isRailgun: policy.isRailgun,
+        isOfframp: policy.isOfframp,
+        ciphertext: tokenEntry.ciphertext,
+      };
+
+      console.log("[webhook] Triggering CRE workflow:", JSON.stringify(crePayload, null, 2));
+
+      triggerCreWithPayload(crePayload).then((result) => {
+        if (result.ok) {
+          console.log(`[webhook] CRE workflow completed (exit ${result.exitCode})`);
+        } else {
+          console.error(`[webhook] CRE workflow failed (exit ${result.exitCode})`);
+        }
+        if (result.stdout) console.log("[cre:stdout]", result.stdout);
+        if (result.stderr) console.error("[cre:stderr]", result.stderr);
+      }).catch((err) => {
+        console.error("[webhook] CRE trigger error:", err);
+      });
     }
 
     res.status(200).json({ ok: true, matched: matched.length });

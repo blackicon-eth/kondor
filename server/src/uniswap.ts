@@ -15,7 +15,7 @@ type QuoteResponsePayload = Record<string, unknown> & {
   permitData?: unknown;
 };
 
-type Swap5792Call = {
+type SwapTxCall = {
   to: string;
   data: string;
   value: string;
@@ -25,12 +25,11 @@ type Swap5792Call = {
   gasPrice?: string;
 };
 
-type Swap5792ResponsePayload = {
+/** POST /swap — includes x-permit2-disabled in OpenAPI; builds proxy-router calldata. */
+type SwapResponsePayload = {
   requestId: string;
-  from: string;
-  chainId: number;
+  swap: SwapTxCall;
   gasFee?: string;
-  calls: Swap5792Call[];
 };
 
 type ApprovalTx = {
@@ -86,7 +85,7 @@ export type BatchSwap5792Result = {
     from: string;
     chainId: number;
     gasFee?: string;
-    calls: Swap5792Call[];
+    calls: SwapTxCall[];
     calldata: string[];
   }>;
 };
@@ -139,7 +138,7 @@ function buildExecuteBatchCalldata(
   return encodeFunctionData({
     abi,
     functionName: method,
-    args: [targets, values.map((value) => BigInt(value)), calldatas as Hex[]],
+    args: [targets, values.map((value) => BigInt(value)), calldatas.map((c) => c as Hex)],
   });
 }
 
@@ -156,7 +155,13 @@ export async function createBatchSwap5792(
     "x-permit2-disabled": "true",
   };
 
-  const swapHeaders = buildHeaders(apiKey, { routerVersion: body.universalRouterVersion });
+  // Proxy approval flow: must match /quote and /check_approval. OpenAPI lists
+  // x-permit2-disabled for /swap but not for /swap_5792; the latter still produced
+  // Permit2 UR calldata and AllowanceExpired when permitData was omitted.
+  const swapHeaders = {
+    ...buildHeaders(apiKey, { routerVersion: body.universalRouterVersion }),
+    "x-permit2-disabled": "true",
+  };
   const includeApprovalCalls = body.includeApprovalCalls ?? true;
   const executeBatchMethod: "batchExecute" = body.executeBatchMethod ?? "batchExecute";
 
@@ -235,7 +240,6 @@ export async function createBatchSwap5792(
     quoteResponses.map(async ({ index, quoteRequest, swapper, tokenInChainId, approvalResponse, quoteResponse }) => {
       const swapPayload: Record<string, unknown> = {
         quote: quoteResponse.quote,
-        permitData: null,
       };
 
       if (typeof body.deadline === "number") {
@@ -247,16 +251,12 @@ export async function createBatchSwap5792(
       }
 
       try {
-        const response = await axios.post<Swap5792ResponsePayload>(
-          `${UNISWAP_API_BASE}/swap_5792`,
-          swapPayload,
-          {
-            headers: swapHeaders,
-            timeout: REQUEST_TIMEOUT_MS,
-          }
-        );
+        const response = await axios.post<SwapResponsePayload>(`${UNISWAP_API_BASE}/swap`, swapPayload, {
+          headers: swapHeaders,
+          timeout: REQUEST_TIMEOUT_MS,
+        });
 
-        const swap = response.data;
+        const { requestId: swapRequestId, swap: swapTx, gasFee } = response.data;
 
         if (approvalResponse?.cancel) {
           flatCalls.push({
@@ -278,15 +278,13 @@ export async function createBatchSwap5792(
           });
         }
 
-        for (const call of swap.calls) {
-          flatCalls.push({
-            to: call.to,
-            value: call.value,
-            data: call.data,
-            source: "swap",
-            quoteIndex: index,
-          });
-        }
+        flatCalls.push({
+          to: swapTx.to,
+          value: swapTx.value,
+          data: swapTx.data,
+          source: "swap",
+          quoteIndex: index,
+        });
 
         return {
           index,
@@ -294,15 +292,15 @@ export async function createBatchSwap5792(
           approvalRequestId: approvalResponse?.requestId,
           quoteRequestId: quoteResponse.requestId,
           routing: quoteResponse.routing,
-          swapRequestId: swap.requestId,
+          swapRequestId,
           from: swapper,
           chainId: tokenInChainId,
-          gasFee: swap.gasFee,
-          calls: swap.calls,
-          calldata: swap.calls.map((call) => call.data),
+          gasFee,
+          calls: [swapTx],
+          calldata: [swapTx.data],
         };
       } catch (error) {
-        throw new Error(`swap_5792 request #${index} failed. ${normalizeError(error)}`);
+        throw new Error(`swap request #${index} failed. ${normalizeError(error)}`);
       }
     })
   );

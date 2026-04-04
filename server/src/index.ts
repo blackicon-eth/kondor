@@ -2,9 +2,8 @@ import "./env";
 import express from "express";
 import cors from "cors";
 import { AlchemyWebhookManager } from "./alchemyWebhookManager";
-import { loadWatchedAddresses } from "./addressStore";
+import { loadWatchedAddresses, saveWatchedAddresses } from "./addressStore";
 import { config } from "./config";
-import { syncAlchemyWebhookAddresses } from "./sync";
 import { createAlchemyWebhookHandler } from "./webhookHandler";
 import { createBatchSwap5792, type BatchSwap5792Request } from "./uniswap";
 import {
@@ -16,8 +15,13 @@ import {
   getAllSubdomains,
   getSubdomainByStealthAddress,
   getSubdomainBySeed,
-  pruneStaleStealthAddresses,
 } from "./gateway";
+import {
+  encrypt,
+  hexToBytes,
+  ed25519PubToX25519,
+  ed25519PrivToX25519,
+} from "@kondor/shared/crypto";
 
 async function bootstrap(): Promise<void> {
   const app = express();
@@ -56,15 +60,23 @@ async function bootstrap(): Promise<void> {
     });
 
     watchedAddresses = new Set(await loadWatchedAddresses());
+    webhookId = config.webhookId;
 
-    try {
-      const syncResult = await syncAlchemyWebhookAddresses(manager);
-      webhookId = syncResult.webhookId;
-      console.log(
-        `[sync] webhook=${syncResult.webhookId} added=${syncResult.added} removed=${syncResult.removed} total=${syncResult.total}`
-      );
-    } catch (err) {
-      console.warn("[sync] Initial sync failed:", err);
+    if (!webhookId && config.autoCreateWebhook && config.webhookUrl) {
+      try {
+        webhookId = await manager.createAddressActivityWebhook({
+          webhookUrl: config.webhookUrl,
+          webhookName: config.webhookName,
+          watchedAddresses: Array.from(watchedAddresses),
+        });
+        console.log(`[alchemy] created webhook ${webhookId}`);
+      } catch (err) {
+        console.warn("[alchemy] failed to auto-create webhook:", err);
+      }
+    }
+
+    if (!webhookId) {
+      console.warn("[alchemy] WEBHOOK_ID is missing, new stealth addresses will not be pushed");
     }
 
     webhookDeps = { watchedAddressSet: watchedAddresses };
@@ -91,6 +103,7 @@ async function bootstrap(): Promise<void> {
       });
 
       watchedAddresses.add(normalized);
+      await saveWatchedAddresses(Array.from(watchedAddresses));
       if (webhookDeps) {
         webhookDeps.watchedAddressSet = watchedAddresses;
       }
@@ -139,28 +152,6 @@ async function bootstrap(): Promise<void> {
   // ── JSON body parser for remaining routes ───────────────────────
 
   app.use(express.json());
-
-  // ── Sync addresses ──────────────────────────────────────────────
-
-  app.post("/sync-addresses", async (_req, res) => {
-    try {
-      if (!manager) {
-        res.status(503).json({ ok: false, error: "Alchemy is not configured" });
-        return;
-      }
-
-      const result = await syncAlchemyWebhookAddresses(manager);
-      webhookId = result.webhookId;
-      watchedAddresses = new Set(await loadWatchedAddresses());
-      if (webhookDeps) {
-        webhookDeps.watchedAddressSet = watchedAddresses;
-      }
-      res.json({ ok: true, result });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      res.status(500).json({ ok: false, error: message });
-    }
-  });
 
   // ── Uniswap batch quote + swap_5792 wrapper ─────────────────────
 
@@ -271,21 +262,6 @@ async function bootstrap(): Promise<void> {
 
       await registerSubdomain(name, owner, seedAddress, text, addresses);
 
-      // Sync webhook addresses after registration
-      if (manager) {
-        try {
-          const syncResult = await syncAlchemyWebhookAddresses(manager);
-          webhookId = syncResult.webhookId;
-          watchedAddresses = new Set(await loadWatchedAddresses());
-          if (webhookDeps) {
-            webhookDeps.watchedAddressSet = watchedAddresses;
-          }
-          console.log(`[register] sync complete: added=${syncResult.added} total=${syncResult.total}`);
-        } catch (syncErr) {
-          console.warn("[register] Sync addresses failed:", syncErr);
-        }
-      }
-
       res.json({ ok: true });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -319,33 +295,87 @@ async function bootstrap(): Promise<void> {
     }
   });
 
-  // ── Start ───────────────────────────────────────────────────────
+  // Encrypt a policy payload and store it as "kondor-policy" text record
+  // Each token's conditions/elseActions are encrypted individually
+  app.post("/subdomains/update-policy", async (req, res) => {
+    try {
+      const { name, policy } = req.body as {
+        name?: string;
+        policy?: {
+          destinationChain: string;
+          isRailgun: boolean;
+          isOfframp: boolean;
+          forwardTo?: string;
+          tokens: Array<{
+            inputToken: string;
+            inputDecimals: number;
+            conditions: unknown[];
+            elseActions: unknown[];
+          }>;
+        };
+      };
 
-  if (manager) {
-    setInterval(async () => {
-      try {
-        const removed = await pruneStaleStealthAddresses();
-        if (removed > 0) {
-          const syncResult = await syncAlchemyWebhookAddresses(manager);
-          webhookId = syncResult.webhookId;
-          watchedAddresses = new Set(await loadWatchedAddresses());
-          if (webhookDeps) {
-            webhookDeps.watchedAddressSet = watchedAddresses;
-          }
-          console.log(`[cleanup] pruned=${removed}, webhook total=${syncResult.total}`);
-        }
-      } catch (error) {
-        console.warn("[cleanup] failed:", error);
+      if (!name || !policy || !policy.tokens?.length) {
+        res.status(400).json({ ok: false, error: "name and policy with tokens are required" });
+        return;
       }
-    }, 60_000);
-  }
+
+      const existing = await getSubdomainWithRecords(name);
+      if (!existing) {
+        res.status(404).json({ ok: false, error: "Subdomain not found" });
+        return;
+      }
+
+      const crePubHex = process.env.ASYM_KEY_EDDSA25519?.trim();
+      const serverPrivHex = process.env.ASYM_PRIV_KEY_EDDSA25519?.trim();
+
+      if (!crePubHex || !serverPrivHex) {
+        res.status(503).json({ ok: false, error: "EdDSA keys not configured" });
+        return;
+      }
+
+      const crePubX = ed25519PubToX25519(hexToBytes(crePubHex));
+      const serverPrivX = ed25519PrivToX25519(hexToBytes(serverPrivHex));
+
+      // Encrypt conditions/elseActions per token, keep metadata plaintext
+      const storedTokens = policy.tokens.map((token) => {
+        const plaintext = JSON.stringify({
+          conditions: token.conditions,
+          elseActions: token.elseActions,
+        });
+        return {
+          inputToken: token.inputToken,
+          inputDecimals: token.inputDecimals,
+          ciphertext: encrypt(plaintext, serverPrivX, crePubX),
+        };
+      });
+
+      const storedPolicy = {
+        destinationChain: policy.destinationChain,
+        isRailgun: policy.isRailgun,
+        isOfframp: policy.isOfframp,
+        forwardTo: policy.forwardTo,
+        tokens: storedTokens,
+      };
+
+      await updateSubdomainTextRecords(name, [
+        { key: "kondor-policy", value: JSON.stringify(storedPolicy) },
+      ]);
+
+      res.json({ ok: true, policy: storedPolicy });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ ok: false, error: message });
+    }
+  });
+
+  // ── Start ───────────────────────────────────────────────────────
 
   app.listen(config.port, () => {
     console.log(`express server running on http://localhost:${config.port}`);
     console.log("endpoints:");
     console.log("  GET  /health");
     console.log("  POST /webhooks/alchemy");
-    console.log("  POST /sync-addresses");
     console.log("  POST /swap_5792");
     console.log("  GET  /gateway/:sender/:data");
     console.log("  GET  /subdomains");
