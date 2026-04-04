@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useMemo } from "react";
+import { useEffect } from "react";
 import { useUser } from "@/context/user-context";
 import { Loader2 } from "lucide-react";
 import { usePrivy } from "@privy-io/react-auth";
@@ -9,30 +9,17 @@ import { AnimatePresence, motion } from "framer-motion";
 import Navbar from "@/components/navbar";
 import Footer from "@/components/footer";
 
-const ONBOARDING_KEY = "kondor:onboarding";
-
 export default function NavigationShell({ children }: { children: React.ReactNode }) {
-  const { loading: userLoading } = useUser();
+  const { loading: userLoading, completedOnboarding } = useUser();
   const { authenticated } = usePrivy();
   const pathname = usePathname();
   const router = useRouter();
-
-  // Onboarding state from localStorage (creates it if it doesn't exist)
-  const completedOnboarding = useMemo(() => {
-    if (typeof window === "undefined") return false;
-    const value = localStorage.getItem(ONBOARDING_KEY);
-    if (value === null) {
-      localStorage.setItem(ONBOARDING_KEY, "false");
-      return false;
-    }
-    return value === "true";
-  }, []);
 
   // redirect to home if user is not authenticated and loading finished
   useEffect(() => {
     if (!userLoading) {
       // Safe guard for test page
-      if (pathname === "/profile") {
+      if (pathname === "/test") {
         return;
       }
 
@@ -45,6 +32,12 @@ export default function NavigationShell({ children }: { children: React.ReactNod
       // Redirect to onboarding if user has not completed onboarding and is not on the onboarding page
       if (!completedOnboarding && pathname !== "/onboarding" && pathname !== "/") {
         router.replace("/onboarding");
+        return;
+      }
+
+      // If the user completed onboarding and is on the onboarding page, redirect to dashboard
+      if (completedOnboarding && pathname === "/onboarding") {
+        router.replace("/dashboard");
         return;
       }
     }

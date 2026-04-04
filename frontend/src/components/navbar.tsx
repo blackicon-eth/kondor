@@ -1,8 +1,63 @@
 "use client";
 
+import Link from "next/link";
+import { motion } from "framer-motion";
 import { usePathname, useRouter } from "next/navigation";
 import { usePrivy, useLogin } from "@privy-io/react-auth";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+
+const navEase = [0.22, 1, 0.36, 1] as const;
+
+function NavLink({
+  href,
+  active,
+  children,
+}: {
+  href: string;
+  active: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <Link
+      href={href}
+      className="relative inline-block px-0.5 pt-0.5 pb-1.5 outline-offset-4"
+    >
+      <motion.span
+        className={cn(
+          "relative z-10 inline-block font-headline uppercase tracking-wider text-base transition-colors duration-200",
+          active ? "text-primary-container" : "text-secondary-ds hover:text-white"
+        )}
+        initial={false}
+        animate={{ y: active ? -4 : 0 }}
+        transition={{
+          y: {
+            type: "spring",
+            stiffness: 380,
+            damping: 32,
+            delay: 0.22,
+          },
+        }}
+      >
+        {children}
+      </motion.span>
+      <motion.span
+        aria-hidden
+        className="pointer-events-none absolute bottom-0 left-0 right-0 mx-auto h-0.5 max-w-full rounded-full bg-primary-container"
+        style={{ originX: 0.5 }}
+        initial={false}
+        animate={{
+          scaleX: active ? 1 : 0,
+          opacity: active ? 1 : 0,
+        }}
+        transition={{
+          duration: 0.28,
+          ease: navEase,
+        }}
+      />
+    </Link>
+  );
+}
 
 export default function Navbar() {
   const pathname = usePathname();
@@ -30,16 +85,13 @@ export default function Navbar() {
           Kondor
         </div>
         {showNavigation && (
-          <div className="hidden md:flex items-center space-x-8 font-headline uppercase tracking-wider text-base">
-            <a className="text-primary-container border-b-2 border-primary-container pb-1" href="#">
-              Ecosystem
-            </a>
-            <a className="text-secondary-ds hover:text-white transition-colors" href="#">
-              Security
-            </a>
-            <a className="text-secondary-ds hover:text-white transition-colors" href="#">
-              Docs
-            </a>
+          <div className="hidden md:flex items-center gap-8">
+            <NavLink href="/dashboard" active={pathname === "/dashboard"}>
+              Dashboard
+            </NavLink>
+            <NavLink href="/profile" active={pathname === "/profile"}>
+              Profile
+            </NavLink>
           </div>
         )}
         <Button variant="primary" size="nav" onClick={handleLaunchApp}>

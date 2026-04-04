@@ -6,20 +6,40 @@ import { toast } from "sonner";
 import { usePrivy } from "@privy-io/react-auth";
 import ky from "ky";
 import { useUser } from "@/context/user-context";
-import { Fingerprint, Shield, AtSign, ArrowRight, Loader2 } from "lucide-react";
+import {
+  Fingerprint,
+  GitBranch,
+  CheckCircle,
+  AtSign,
+  ArrowRight,
+  Loader2,
+  Check,
+} from "lucide-react";
+import { useRouter } from "next/navigation";
+import type { PolicyJson } from "@/lib/policies/utils";
 import PolicyFlow from "@/components/policy-flow";
 
 const steps = [
   { id: "identity", label: "Identity", icon: Fingerprint },
-  { id: "policy", label: "Policy", icon: Shield },
+  { id: "policy", label: "Policy", icon: GitBranch },
+  { id: "complete", label: "Complete", icon: CheckCircle },
 ];
 
 export default function Onboarding() {
   const [subdomain, setSubdomain] = useState("");
   const [registering, setRegistering] = useState(false);
   const { user: privyUser, getAccessToken } = usePrivy();
-  const { user, refetch } = useUser();
+  const { user, refetch, completeOnboarding } = useUser();
+  const router = useRouter();
   const [currentStep, setCurrentStep] = useState(user?.ensSubdomain ? 1 : 0);
+
+  // TODO: Replace mock with actual DB write — encrypt policy and save to user's text record
+  async function handlePolicyConfirm(policy: PolicyJson) {
+    console.log("[TEST] Policy confirmed:", JSON.stringify(policy, null, 2));
+    toast.success("Policy saved successfully!");
+    await new Promise((r) => setTimeout(r, 1500));
+    setCurrentStep(2);
+  }
 
   async function handleRegister() {
     if (!subdomain.trim()) return;
@@ -84,7 +104,7 @@ export default function Onboarding() {
                     : "text-secondary-container pl-5"
                 }`}
               >
-                <Icon className={`size-6 ${isActive ? "fill-primary-container" : ""}`} />
+                <Icon className="size-6" />
                 {step.label}
               </div>
             );
@@ -99,9 +119,9 @@ export default function Onboarding() {
       </aside>
 
       {/* Main Content */}
-      <div className="flex justify-start items-start w-full overflow-y-auto">
+      <div className="flex justify-start items-start w-full overflow-y-auto overflow-x-hidden">
         <AnimatePresence mode="wait" initial={false}>
-          {currentStep === 0 ? (
+          {currentStep === 0 && (
             <motion.div
               key="identity"
               className="max-w-5xl py-8 min-h-full flex flex-col"
@@ -117,7 +137,7 @@ export default function Onboarding() {
                     className="inline-block bg-primary-container text-on-primary-container px-3 py-1 text-[10px] font-label uppercase tracking-[0.2em] mb-6"
                     style={{ clipPath: "polygon(0 0, 100% 0, 92% 100%, 0% 100%)" }}
                   >
-                    Step 01 / Phase Alpha
+                    Step 01 / Phase_01
                   </div>
                   <h1 className="text-6xl md:text-8xl font-headline font-black text-on-surface leading-[0.9] tracking-tighter mb-8">
                     CLAIM YOUR <br />
@@ -179,7 +199,8 @@ export default function Onboarding() {
                 </div>
               </section>
             </motion.div>
-          ) : (
+          )}
+          {currentStep === 1 && (
             <motion.div
               key="policy"
               className="w-full py-8 min-h-full flex flex-col"
@@ -193,7 +214,7 @@ export default function Onboarding() {
                   className="inline-block bg-primary-container text-on-primary-container px-3 py-1 text-[10px] font-label uppercase tracking-[0.2em] mb-6"
                   style={{ clipPath: "polygon(0 0, 100% 0, 92% 100%, 0% 100%)" }}
                 >
-                  Step 02 / Phase Alpha
+                  Step 02 / Phase_01
                 </div>
                 <h1 className="text-5xl md:text-7xl font-headline font-black text-on-surface leading-[0.9] tracking-tighter mb-4">
                   DESIGN YOUR
@@ -205,7 +226,65 @@ export default function Onboarding() {
                 </p>
               </div>
 
-              <PolicyFlow />
+              <PolicyFlow onConfirm={handlePolicyConfirm} />
+            </motion.div>
+          )}
+          {currentStep === 2 && (
+            <motion.div
+              key="complete"
+              className="w-full h-[calc(70vh)] flex flex-col items-center justify-center -translate-x-24"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+            >
+              <div className="flex flex-col items-center gap-8">
+                {/* Pulsing check */}
+                <motion.div
+                  className="relative flex items-center justify-center"
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  transition={{ duration: 0.5, delay: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                >
+                  <div className="absolute size-28 rounded-full bg-green-500/10 animate-ping" />
+                  <div className="absolute size-24 rounded-full bg-green-500/5" />
+                  <div className="relative size-20 rounded-full bg-green-500/20 border border-green-500/30 flex items-center justify-center">
+                    <Check className="size-10 text-green-400" strokeWidth={3} />
+                  </div>
+                </motion.div>
+
+                {/* Heading */}
+                <motion.div
+                  className="flex flex-col items-center gap-4 mt-4"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.5, delay: 0.4 }}
+                >
+                  <h1 className="text-5xl md:text-7xl font-headline font-black text-on-surface leading-[0.9] tracking-tighter text-center">
+                    YOU&apos;RE ALL SET
+                  </h1>
+                  <p className="text-secondary-ds text-lg font-body max-w-md leading-relaxed text-center">
+                    Your <span className="text-primary-container font-bold">KONDOR</span> identity
+                    is claimed and your policy is configured. Welcome to the ecosystem.
+                  </p>
+                </motion.div>
+
+                {/* Dashboard button */}
+                <motion.button
+                  onClick={async () => {
+                    completeOnboarding();
+                    await new Promise((r) => setTimeout(r, 1000));
+                    router.push("/dashboard");
+                  }}
+                  className="mt-4 h-14 px-10 bg-primary-container text-on-primary-container font-headline font-bold uppercase tracking-widest text-base hover:bg-white hover:text-surface transition-all flex items-center gap-3 cursor-pointer"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.5, delay: 0.6 }}
+                >
+                  Go to Dashboard
+                  <ArrowRight className="size-5" />
+                </motion.button>
+              </div>
             </motion.div>
           )}
         </AnimatePresence>

@@ -19,19 +19,41 @@ type UserContextType = {
   user: User | null;
   loading: boolean;
   refetch: () => Promise<void>;
+  completedOnboarding: boolean;
+  completeOnboarding: () => void;
 };
 
 const UserContext = createContext<UserContextType>({
   user: null,
   loading: true,
-  refetch: async () => { },
+  refetch: async () => {},
+  completedOnboarding: false,
+  completeOnboarding: () => {},
 });
+
+const ONBOARDING_KEY = "kondor:onboarding";
 
 export function UserProvider({ children }: { children: React.ReactNode }) {
   const { ready, authenticated, user: privyUser, getAccessToken } = usePrivy();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [completedOnboarding, setCompletedOnboarding] = useState(() => {
+    if (typeof window === "undefined") return false;
+    const value = localStorage.getItem(ONBOARDING_KEY);
+    if (value === null) {
+      localStorage.setItem(ONBOARDING_KEY, "false");
+      return false;
+    }
+    return value === "true";
+  });
 
+  // Complete onboarding and set the state to true
+  const completeOnboarding = useCallback(() => {
+    localStorage.setItem(ONBOARDING_KEY, "true");
+    setCompletedOnboarding(true);
+  }, []);
+
+  // Fetch user from the database if authenticated and privy user is ready
   const fetchUser = useCallback(async () => {
     if (!authenticated || !privyUser) {
       setUser(null);
@@ -67,6 +89,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     }
   }, [authenticated, privyUser, getAccessToken]);
 
+  // Fetch user when privy is ready
   useEffect(() => {
     if (ready) {
       fetchUser();
@@ -74,7 +97,9 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   }, [ready, fetchUser]);
 
   return (
-    <UserContext.Provider value={{ user, loading, refetch: fetchUser }}>
+    <UserContext.Provider
+      value={{ user, loading, refetch: fetchUser, completedOnboarding, completeOnboarding }}
+    >
       {children}
     </UserContext.Provider>
   );

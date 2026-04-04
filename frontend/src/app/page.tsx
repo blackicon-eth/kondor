@@ -6,6 +6,7 @@ import { ChevronRight } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { usePrivy, useLogin } from "@privy-io/react-auth";
 import { Button } from "@/components/ui/button";
+import { useUser } from "@/context/user-context";
 
 const fadeUp = {
   hidden: { opacity: 0, y: 20 },
@@ -25,6 +26,7 @@ const tech = [
 export default function Home() {
   const router = useRouter();
   const { authenticated } = usePrivy();
+  const { completedOnboarding } = useUser();
   const { login } = useLogin({
     onComplete: () => {
       router.push("/onboarding");
@@ -36,7 +38,11 @@ export default function Home() {
       login();
       return;
     }
-    router.push("/onboarding");
+    if (!completedOnboarding) {
+      router.push("/onboarding");
+      return;
+    }
+    router.push("/dashboard");
   }
 
   return (

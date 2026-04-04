@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
-import { useUser } from "@/context/user-context";
 import { Zap, Landmark, RotateCcw, ExternalLink, Lock, Loader2 } from "lucide-react";
 
 const RECOVERY_ENTRIES = [
@@ -27,7 +26,6 @@ const fadeUp = {
 };
 
 export default function Profile() {
-  const { user } = useUser();
   const [zkAddress, setZkAddress] = useState("");
   const [updating, setUpdating] = useState(false);
 
@@ -74,7 +72,7 @@ export default function Profile() {
 
         {/* Protocol Cards Row */}
         <motion.div variants={fadeUp} className="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-8">
-          {/* Railgun Protocol — wider card */}
+          {/* Railgun Address — wider card */}
           <div className="lg:col-span-7 bg-surface-container border border-outline-variant/10 relative overflow-hidden">
             {/* Red left accent bar */}
             <div className="absolute top-0 left-0 w-1 h-full bg-primary-container" />
@@ -86,10 +84,10 @@ export default function Profile() {
 
             <div className="relative z-10 p-8">
               <h3 className="font-headline font-bold text-on-surface uppercase tracking-wider text-base mb-1">
-                Railgun Protocol
+                Railgun zkAddress
               </h3>
               <p className="font-label text-[10px] uppercase tracking-widest text-secondary-container mb-6">
-                zk Privacy System
+                Your Privacy Layer
               </p>
 
               {/* zkAddress input + Update button */}

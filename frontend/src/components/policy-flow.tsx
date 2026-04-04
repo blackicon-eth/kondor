@@ -4,8 +4,8 @@ import { useCallback, useMemo, useState } from "react";
 import {
   ReactFlow,
   Background,
-  useReactFlow,
   ReactFlowProvider,
+  useReactFlow,
   type Node,
   type Edge,
   Position,
@@ -15,7 +15,6 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import {
-  Coins,
   GitBranch,
   ArrowRight,
   TrendingUp,
@@ -26,43 +25,20 @@ import {
   Minus,
   Plus,
 } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
+import { buildPolicy, type OutcomeConfig, type FlowConfig } from "@/lib/policies/utils";
 
 // ─── Token list ──────────────────────────────────────────────────────────────
 const TOKENS = [
-  { symbol: "ETH", name: "Ethereum", color: "#627EEA" },
+  { symbol: "WETH", name: "Wrapped Ether", color: "#627EEA" },
   { symbol: "WBTC", name: "Wrapped Bitcoin", color: "#F7931A" },
   { symbol: "LINK", name: "Chainlink", color: "#2A5ADA" },
   { symbol: "UNI", name: "Uniswap", color: "#FF007A" },
 ] as const;
 
-const OPERATORS = ["<", ">"] as const;
-
-// ─── Types ───────────────────────────────────────────────────────────────────
-export type OutcomeConfig = {
-  swapToken: string;
-  swapPct: number;
-  aavePct: number;
-  destPct: number;
-};
-
-export type PolicyConfig = {
-  sourceToken: string;
-  branchingEnabled: boolean;
-  condition: {
-    token: string;
-    operator: "<" | ">";
-    amount: number;
-  };
-  outcomeIf: OutcomeConfig;
-  outcomeElse: OutcomeConfig;
-  outcome: OutcomeConfig;
-  destinationWallet: string;
-  railgunWallet: string;
-  privateMode: boolean;
-};
+// PolicyConfig is the same as FlowConfig from lib/policies/utils
+type PolicyConfig = FlowConfig;
 
 // ─── Shared node wrapper ─────────────────────────────────────────────────────
 function NodeShell({
@@ -130,7 +106,7 @@ function TokenSourceNode({ data }: NodeProps) {
       <Handle
         type="source"
         position={Position.Right}
-        className="!bg-primary-container !border-0 !size-2"
+        className="bg-primary-container! border-0! size-2!"
       />
     </div>
   );
@@ -148,7 +124,7 @@ function ConditionNode({ data }: NodeProps) {
         <Handle
           type="target"
           position={Position.Left}
-          className="!bg-primary-container !border-0 !size-2"
+          className="bg-primary-container! border-0! size-2!"
         />
         <NodeShell label="ELSE" sublabel="FALLBACK" className="min-w-[240px]">
           <div className="flex items-center gap-2 text-secondary-ds">
@@ -161,7 +137,7 @@ function ConditionNode({ data }: NodeProps) {
         <Handle
           type="source"
           position={Position.Right}
-          className="!bg-primary-container !border-0 !size-2"
+          className="bg-primary-container! border-0! size-2!"
         />
       </div>
     );
@@ -172,7 +148,7 @@ function ConditionNode({ data }: NodeProps) {
       <Handle
         type="target"
         position={Position.Left}
-        className="!bg-primary-container !border-0 !size-2"
+        className="bg-primary-container! border-0! size-2!"
       />
       <NodeShell label="IF" sublabel="CONDITION" accent>
         <div className="flex items-center gap-3 min-w-[320px]">
@@ -198,7 +174,7 @@ function ConditionNode({ data }: NodeProps) {
             className="bg-surface-container-high border border-outline-variant/20 text-primary-container font-headline font-bold text-lg px-3 py-1.5 w-12 text-center cursor-pointer hover:border-primary-container/50 transition-all"
           >
             <ChevronDown
-              className={`size-5 mx-auto transition-transform duration-300 -rotate-90 ${config.condition.operator === ">" ? "rotate-90" : ""}`}
+              className={`size-5 mx-auto transition-transform duration-300 ${config.condition.operator === "<" ? "rotate-90" : "-rotate-90"}`}
             />
           </button>
 
@@ -219,7 +195,7 @@ function ConditionNode({ data }: NodeProps) {
       <Handle
         type="source"
         position={Position.Right}
-        className="!bg-primary-container !border-0 !size-2"
+        className="bg-primary-container! border-0! size-2!"
       />
     </div>
   );
@@ -273,7 +249,7 @@ function OutcomeNode({ data }: NodeProps) {
       <Handle
         type="target"
         position={Position.Left}
-        className="!bg-primary-container !border-0 !size-2"
+        className="bg-primary-container! border-0! size-2!"
       />
       <NodeShell label={label} sublabel={sublabel} accent={isValid} className="min-w-[300px]">
         <div className="space-y-3">
@@ -350,7 +326,7 @@ function OutcomeNode({ data }: NodeProps) {
       <Handle
         type="source"
         position={Position.Right}
-        className="!bg-primary-container !border-0 !size-2"
+        className="bg-primary-container! border-0! size-2!"
       />
     </div>
   );
@@ -366,7 +342,7 @@ function DestinationNode({ data }: NodeProps) {
       <Handle
         type="target"
         position={Position.Left}
-        className="!bg-primary-container !border-0 !size-2"
+        className="bg-primary-container! border-0! size-2!"
       />
       <NodeShell label="DESTINATION" sublabel="OUTPUT" glowing>
         <div className="space-y-3 min-w-[260px]">
@@ -427,19 +403,19 @@ const nodeTypes = {
 
 // ─── Main Component ──────────────────────────────────────────────────────────
 const defaultOutcome: OutcomeConfig = {
-  swapToken: "ETH",
+  swapToken: "WETH",
   swapPct: 25,
   aavePct: 25,
   destPct: 50,
 };
 
-export default function PolicyFlow() {
+export default function PolicyFlow({ onConfirm }: { onConfirm?: (policy: ReturnType<typeof buildPolicy>) => void }) {
   const [config, setConfig] = useState<PolicyConfig>({
     sourceToken: "USDC",
     branchingEnabled: false,
-    condition: { token: "ETH", operator: ">", amount: 3000 },
+    condition: { token: "WETH", operator: ">", amount: 3000 },
     outcomeIf: { ...defaultOutcome },
-    outcomeElse: { swapToken: "ETH", swapPct: 0, aavePct: 100, destPct: 0 },
+    outcomeElse: { swapToken: "WETH", swapPct: 0, aavePct: 100, destPct: 0 },
     outcome: { ...defaultOutcome },
     destinationWallet: "",
     railgunWallet: "",
@@ -600,32 +576,50 @@ export default function PolicyFlow() {
     }
 
     return { nodes: n, edges: e };
-  }, [config, toggleBranching, updateCondition, makeOutcomeUpdater, updateDestination]);
+  }, [config, updateCondition, makeOutcomeUpdater, updateDestination]);
+
+  function handleTestLog() {
+    const policy = buildPolicy(config);
+    console.log("[TEST] Policy JSON:", JSON.stringify(policy, null, 2));
+  }
 
   return (
     <div className="w-full space-y-4">
-      {/* Branching toggle */}
-      <div className="inline-flex items-center gap-4 bg-surface-container px-5 py-3 border border-outline-variant/15">
-        <div className="flex items-center gap-3 w-[300px]">
-          <GitBranch
-            className={`size-5 transition-colors ${config.branchingEnabled ? "text-primary-container" : "text-secondary-ds"}`}
-          />
-          <div>
-            <div className="font-headline font-bold text-sm tracking-tight text-on-surface">
-              Conditional Routing
-            </div>
-            <div className="font-label text-[10px] uppercase tracking-widest text-secondary-ds">
-              {config.branchingEnabled
-                ? "IF / ELSE enabled — route by condition"
-                : "Direct mode — single outcome path"}
+      {/* Top bar */}
+      <div className="w-full flex items-center justify-between pr-4">
+        {/* Branching toggle */}
+        <div className="inline-flex items-center gap-4 bg-surface-container px-5 py-3 border border-outline-variant/15">
+          <div className="flex items-center gap-3 w-[300px]">
+            <GitBranch
+              className={`size-5 transition-colors ${config.branchingEnabled ? "text-primary-container" : "text-secondary-ds"}`}
+            />
+            <div>
+              <div className="font-headline font-bold text-sm tracking-tight text-on-surface">
+                Conditional Routing
+              </div>
+              <div className="font-label text-[10px] uppercase tracking-widest text-secondary-ds">
+                {config.branchingEnabled
+                  ? "IF / ELSE enabled — route by condition"
+                  : "Direct mode — single outcome path"}
+              </div>
             </div>
           </div>
+          <Switch checked={config.branchingEnabled} onCheckedChange={toggleBranching} />
         </div>
-        <Switch checked={config.branchingEnabled} onCheckedChange={toggleBranching} />
+
+        {/* Confirm button */}
+        <button
+          onClick={() => onConfirm?.(buildPolicy(config))}
+          disabled={!(config.privateMode ? config.railgunWallet.trim() : config.destinationWallet.trim())}
+          className="h-12 px-8 bg-primary-container text-on-primary-container font-headline font-bold uppercase tracking-widest text-sm hover:bg-white hover:text-surface transition-all flex items-center gap-3 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-primary-container disabled:hover:text-on-primary-container"
+        >
+          Confirm Policy
+          <ArrowRight className="size-4" />
+        </button>
       </div>
 
       {/* Flow pane */}
-      <div className="w-full h-[550px] relative">
+      <div className="w-full h-[550px] relative border border-outline-variant/15">
         {/* Scanline overlay for aesthetic */}
         <div
           className="absolute inset-0 pointer-events-none z-10 opacity-[0.015]"
@@ -638,12 +632,23 @@ export default function PolicyFlow() {
           <PolicyFlowInner nodes={nodes} edges={edges} />
         </ReactFlowProvider>
       </div>
+
+      {/* Test button */}
+      <button
+        onClick={handleTestLog}
+        className="px-4 py-2 bg-surface-container-high border border-outline-variant/20 text-secondary-ds font-label text-[10px] uppercase tracking-widest hover:text-on-surface hover:border-outline-variant/40 transition-colors cursor-pointer"
+      >
+        [TEST] Log Policy JSON
+      </button>
     </div>
   );
 }
 
 function PolicyFlowInner({ nodes, edges }: { nodes: Node[]; edges: Edge[] }) {
+  const { zoomIn, zoomOut } = useReactFlow();
+
   return (
+    <>
     <ReactFlow
       nodes={nodes}
       edges={edges}
@@ -663,9 +668,24 @@ function PolicyFlowInner({ nodes, edges }: { nodes: Node[]; edges: Edge[] }) {
       <Background
         variant={BackgroundVariant.Dots}
         gap={20}
-        size={1}
-        color="rgba(227, 27, 35, 0.08)"
+        size={1.5}
+        color="rgba(227, 27, 35, 0.25)"
       />
     </ReactFlow>
+    <div className="absolute bottom-3 right-3 z-20 flex items-center gap-1">
+      <button
+        onClick={() => zoomOut({ duration: 200 })}
+        className="size-8 flex items-center justify-center bg-surface-container border border-outline-variant/20 text-secondary-ds hover:text-on-surface hover:border-outline-variant/40 transition-colors cursor-pointer"
+      >
+        <Minus className="size-4" />
+      </button>
+      <button
+        onClick={() => zoomIn({ duration: 200 })}
+        className="size-8 flex items-center justify-center bg-surface-container border border-outline-variant/20 text-secondary-ds hover:text-on-surface hover:border-outline-variant/40 transition-colors cursor-pointer"
+      >
+        <Plus className="size-4" />
+      </button>
+    </div>
+    </>
   );
 }
