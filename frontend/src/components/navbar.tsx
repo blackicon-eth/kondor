@@ -3,9 +3,8 @@
 import Link from "next/link";
 import { useState } from "react";
 import { motion } from "motion/react";
-import { usePathname, useRouter } from "next/navigation";
-import { usePrivy, useLogin } from "@privy-io/react-auth";
-import { Button } from "@/components/ui/button";
+import { usePathname } from "next/navigation";
+import { usePrivy } from "@privy-io/react-auth";
 import { cn } from "@/lib/utils";
 import { useUser } from "@/context/user-context";
 import { Copy, Check, LogOut } from "lucide-react";
@@ -22,10 +21,7 @@ function NavLink({
   children: React.ReactNode;
 }) {
   return (
-    <Link
-      href={href}
-      className="relative inline-block px-0.5 pt-0.5 pb-1.5 outline-offset-4"
-    >
+    <Link href={href} className="relative inline-block px-0.5 pt-0.5 pb-1.5 outline-offset-4">
       <motion.span
         className={cn(
           "relative z-10 inline-block font-headline uppercase tracking-wider text-base transition-colors duration-200",
@@ -64,24 +60,10 @@ function NavLink({
 
 export default function Navbar() {
   const pathname = usePathname();
-  const router = useRouter();
   const showNavigation = pathname !== "/" && pathname !== "/onboarding";
   const { authenticated, logout } = usePrivy();
   const { user } = useUser();
-  const { login } = useLogin({
-    onComplete: () => {
-      router.push("/onboarding");
-    },
-  });
   const [copied, setCopied] = useState(false);
-
-  function handleLaunchApp() {
-    if (!authenticated) {
-      login();
-      return;
-    }
-    router.push("/onboarding");
-  }
 
   function copyAddress() {
     if (user?.seedAddress) {
@@ -112,7 +94,7 @@ export default function Navbar() {
           </div>
         )}
 
-        {authenticated && displayAddress ? (
+        {authenticated && displayAddress && (
           <div className="flex items-center gap-2">
             {/* Address chip */}
             <button
@@ -122,7 +104,8 @@ export default function Navbar() {
               <div className="size-2 bg-green-400 rounded-full" />
               {user?.ensSubdomain ? (
                 <span className="font-headline font-bold text-sm text-on-surface tracking-tight">
-                  {user.ensSubdomain}<span className="text-secondary-ds">.kondor.eth</span>
+                  {user.ensSubdomain}
+                  <span className="text-secondary-ds">.kondor.eth</span>
                 </span>
               ) : (
                 <code className="font-label text-xs text-on-surface tracking-wider">
@@ -144,10 +127,6 @@ export default function Navbar() {
               <LogOut className="size-4" />
             </button>
           </div>
-        ) : (
-          <Button variant="primary" size="nav" onClick={handleLaunchApp}>
-            Launch App
-          </Button>
         )}
       </div>
     </nav>
