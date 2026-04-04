@@ -17,6 +17,12 @@ import {
   getSubdomainBySeed,
   pruneStaleStealthAddresses,
 } from "./gateway";
+import {
+  encrypt,
+  hexToBytes,
+  ed25519PubToX25519,
+  ed25519PrivToX25519,
+} from "@kondor/shared/crypto";
 
 async function bootstrap(): Promise<void> {
   const app = express();
@@ -284,6 +290,54 @@ async function bootstrap(): Promise<void> {
 
       await updateSubdomainTextRecords(name, text);
       res.json({ ok: true });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ ok: false, error: message });
+    }
+  });
+
+  // Encrypt a policy payload and store it as "kondor-policy" text record
+  app.post("/subdomains/update-policy", async (req, res) => {
+    try {
+      const { name, policy } = req.body as {
+        name?: string;
+        policy?: Record<string, unknown>;
+      };
+
+      if (!name || !policy) {
+        res.status(400).json({ ok: false, error: "name and policy are required" });
+        return;
+      }
+
+      const existing = await getSubdomainWithRecords(name);
+      if (!existing) {
+        res.status(404).json({ ok: false, error: "Subdomain not found" });
+        return;
+      }
+
+      // CRE's public EdDSA key (the recipient that will decrypt)
+      const crePubHex = process.env.ASYM_KEY_EDDSA25519?.trim();
+      // Server's private EdDSA key (the sender doing the encryption)
+      const serverPrivHex = process.env.ASYM_PRIV_KEY_EDDSA25519?.trim();
+
+      if (!crePubHex || !serverPrivHex) {
+        res.status(503).json({ ok: false, error: "EdDSA keys not configured" });
+        return;
+      }
+
+      // Convert Ed25519 keys → X25519 for DH
+      const crePubX = ed25519PubToX25519(hexToBytes(crePubHex));
+      const serverPrivX = ed25519PrivToX25519(hexToBytes(serverPrivHex));
+
+      // Encrypt the policy JSON
+      const ciphertext = encrypt(JSON.stringify(policy), serverPrivX, crePubX);
+
+      // Store as "kondor-policy" text record
+      await updateSubdomainTextRecords(name, [
+        { key: "kondor-policy", value: ciphertext },
+      ]);
+
+      res.json({ ok: true, ciphertext });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       res.status(500).json({ ok: false, error: message });

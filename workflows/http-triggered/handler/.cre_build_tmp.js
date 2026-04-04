@@ -19125,7 +19125,7 @@ var gcm = /* @__PURE__ */ wrapCipher({ blockSize: 16, nonceLength: 12, tagLength
   };
 });
 var PAYLOAD_VERSION = 1;
-var ENCRYPTED_PREFIX = "rns:enc:";
+var ENCRYPTED_PREFIX = "x25519:enc:";
 function hexToBytes4(hex) {
   const h = hex.replace(/^0x/i, "");
   const bytes = new Uint8Array(h.length / 2);
@@ -19309,13 +19309,13 @@ var onHttpTrigger = (runtime2, payload) => {
     const servicePrivX = ed25519PrivToX25519(servicePrivEd);
     const decryptedBody = decrypt(encryptedInput, servicePrivX);
     const tokenIntent = JSON.parse(decryptedBody);
+    const sender = envelope?.sender ?? tokenIntent.sender;
     intent = {
       ...tokenIntent,
       chain: envelope?.eventChain ?? tokenIntent.chain,
       destinationChain: envelope?.destinationChain ?? tokenIntent.destinationChain,
       salt: tokenIntent.salt ?? envelope?.subnameString ?? tokenIntent.subnameString,
-      sender: envelope?.accountAddress ?? tokenIntent.sender,
-      receiver: envelope?.forwardTo ?? tokenIntent.receiver
+      sender
     };
   } else if (parsedInput && typeof parsedInput === "object") {
     intent = parsedInput;
@@ -19323,8 +19323,9 @@ var onHttpTrigger = (runtime2, payload) => {
     intent = JSON.parse(rawInput);
   }
   const salt = intent.salt ? intent.salt : keccak256(toHex(intent.subnameString ?? ""));
+  const receiver = intent.isRailgun || intent.isOfframp ? intent.sender : intent.forwardTo ?? intent.sender;
   runtime2.log(`Intent: ${intent.inputAmount} ${intent.inputToken} source=${intent.chain} priceChain=${PORTALS_PRICE_CHAIN}`);
-  runtime2.log(`SA (sender)=${intent.sender}, receiver=${intent.receiver}, salt=${salt}`);
+  runtime2.log(`SA (sender)=${intent.sender}, receiver=${receiver}, salt=${salt}`);
   const portalsKey = runtime2.getSecret({ id: "PORTALS_API_KEY" }).result();
   const apiKey = portalsKey.value;
   const priceTokens = new Set;
@@ -19420,7 +19421,7 @@ var onHttpTrigger = (runtime2, payload) => {
     ok: true,
     salt,
     sender: intent.sender,
-    receiver: intent.receiver,
+    receiver,
     prices,
     selectedActions,
     batchSize: targets.length,

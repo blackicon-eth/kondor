@@ -173,8 +173,7 @@ export const onHttpTrigger = (runtime: Runtime<Config>, payload: HTTPPayload): s
   const envelope = parsedInput as {
     eventChain?: string;
     destinationChain?: string;
-    accountAddress?: string;
-    forwardTo?: string;
+    sender?: string;
     subnameString?: string;
     ciphertext?: string;
   } | undefined;
@@ -195,13 +194,15 @@ export const onHttpTrigger = (runtime: Runtime<Config>, payload: HTTPPayload): s
     const decryptedBody = decrypt(encryptedInput, servicePrivX);
     const tokenIntent = JSON.parse(decryptedBody);
 
+    // sender comes from the envelope (outside the cipher), not from the encrypted payload
+    const sender = envelope?.sender ?? tokenIntent.sender;
+
     intent = {
       ...tokenIntent,
       chain: envelope?.eventChain ?? tokenIntent.chain,
       destinationChain: envelope?.destinationChain ?? tokenIntent.destinationChain,
       salt: tokenIntent.salt ?? envelope?.subnameString ?? tokenIntent.subnameString,
-      sender: envelope?.accountAddress ?? tokenIntent.sender,
-      receiver: envelope?.forwardTo ?? tokenIntent.receiver,
+      sender,
     };
   } else if (parsedInput && typeof parsedInput === "object") {
     intent = parsedInput as Intent;
@@ -214,10 +215,16 @@ export const onHttpTrigger = (runtime: Runtime<Config>, payload: HTTPPayload): s
     ? (intent.salt as Hex)
     : keccak256(toHex(intent.subnameString ?? ""));
 
+  // Derive receiver: if isRailgun or isOfframp, receiver = sender (self)
+  // Otherwise use forwardTo (explicit receiver)
+  const receiver = (intent.isRailgun || intent.isOfframp)
+    ? intent.sender
+    : intent.forwardTo ?? intent.sender;
+
   runtime.log(
     `Intent: ${intent.inputAmount} ${intent.inputToken} source=${intent.chain} priceChain=${PORTALS_PRICE_CHAIN}`,
   );
-  runtime.log(`SA (sender)=${intent.sender}, receiver=${intent.receiver}, salt=${salt}`);
+  runtime.log(`SA (sender)=${intent.sender}, receiver=${receiver}, salt=${salt}`);
 
   // --- 2. Fetch prices from Portals (mainnet) ---
   const portalsKey = runtime.getSecret({ id: "PORTALS_API_KEY" }).result();
@@ -400,7 +407,7 @@ export const onHttpTrigger = (runtime: Runtime<Config>, payload: HTTPPayload): s
     ok: true,
     salt,
     sender: intent.sender,
-    receiver: intent.receiver,
+    receiver,
     prices,
     selectedActions,
     batchSize: targets.length,

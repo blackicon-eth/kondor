@@ -5,7 +5,7 @@ import { sha256 } from "@noble/hashes/sha256";
 import { gcm } from "@noble/ciphers/aes";
 
 const PAYLOAD_VERSION = 1;
-const ENCRYPTED_PREFIX = "rns:enc:";
+const ENCRYPTED_PREFIX = "x25519:enc:";
 
 export function hexToBytes(hex: string): Uint8Array {
   const h = hex.replace(/^0x/i, "");

@@ -1,0 +1,78 @@
+{
+    "chain": "ethereum-sepolia",
+    "destinationChain": "ethereum-sepolia",
+    "inputToken": "USDC",
+    "inputAmount": 100,
+    "inputDecimals": 6,
+    "salt": "0x0000000000000000000000000000000000000000",
+    "sender": "0x4070b28eD6c81ee2aD142BdC41d9DF87EDDcEA88",
+    "receiver": "0x8da91A6298eA5d1A8Bc985e99798fd0A0f05701a",
+    "isRailgun": true,
+    "isOfframp": false,
+    "conditions": [
+        {
+            "checks": [
+                {
+                    "token": "WETH",
+                    "operator": "<",
+                    "threshold": 3000
+                },
+                {
+                    "token": "WETH",
+                    "operator": ">",
+                    "threshold": 1000
+                }
+            ],
+            "actions": [
+                {
+                    "actionType": "swap",
+                    "outputToken": "WETH",
+                    "percent": 10
+                },
+                {
+                    "actionType": "supply",
+                    "outputToken": "aBasUSDC",
+                    "percent": 40
+                },
+                {
+                    "actionType": "swap",
+                    "outputToken": "LINK",
+                    "percent": 50
+                }
+            ]
+        },
+        {
+            "checks": [
+                {
+                    "token": "WETH",
+                    "operator": "<",
+                    "threshold": 2000
+                },
+                {
+                    "token": "LINK",
+                    "operator": "<",
+                    "threshold": 8
+                }
+            ],
+            "actions": [
+                {
+                    "actionType": "swap",
+                    "outputToken": "LINK",
+                    "percent": 80
+                }
+            ]
+        }
+    ],
+    "elseActions": [
+        {
+            "actionType": "supply",
+            "outputToken": "aBasWETH",
+            "percent": 90
+        },
+        {
+            "actionType": "swap",
+            "outputToken": "WETH",
+            "percent": 10
+        }
+    ]
+}

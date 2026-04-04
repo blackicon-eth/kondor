@@ -13,6 +13,7 @@
     "db:pull": "drizzle-kit pull"
   },
   "dependencies": {
+    "@kondor/shared": "workspace:*",
     "@libsql/client": "^0.17.2",
     "alchemy-sdk": "^3.6.1",
     "axios": "^1.12.2",
