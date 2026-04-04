@@ -21,6 +21,8 @@ contract MockTarget {
 }
 
 contract KondorRegistryTest is Test {
+    bytes32 constant EVENT_REPORT_MAGIC = keccak256("KONDOR_EVENT_REPORT_V1");
+
     KondorRegistry registry;
     MockTarget target;
     address forwarder = address(0xF0);
@@ -83,6 +85,16 @@ contract KondorRegistryTest is Test {
         return abi.encode(salt_, hashedOwner_, targets_, values_, calldatas_, touched, false, uint8(0));
     }
 
+    function _encodeEventReport(
+        address account_,
+        address[] memory targets_,
+        uint256[] memory values_,
+        bytes[] memory calldatas_,
+        address[] memory touchedTokens_
+    ) internal pure returns (bytes memory) {
+        return abi.encode(EVENT_REPORT_MAGIC, account_, targets_, values_, calldatas_, touchedTokens_);
+    }
+
     function test_onReport_deploysAndExecutes() public {
         bytes32 s = _salt("test.Kondor");
 
@@ -122,6 +134,27 @@ contract KondorRegistryTest is Test {
         registry.onReport("", report);
 
         assertEq(target.value(), 99);
+    }
+
+    function test_onReport_eventReport_executesOnExistingAccount() public {
+        bytes32 s = _salt("event.Kondor");
+        address account = registry.createAccount(s, _aliceHash());
+
+        address[] memory targets = new address[](1);
+        targets[0] = address(target);
+        uint256[] memory values = new uint256[](1);
+        values[0] = 0;
+        bytes[] memory calldatas = new bytes[](1);
+        calldatas[0] = abi.encodeCall(MockTarget.setValue, (123));
+        address[] memory touched = new address[](1);
+        touched[0] = address(0x1234);
+
+        bytes memory report = _encodeEventReport(account, targets, values, calldatas, touched);
+
+        vm.prank(forwarder);
+        registry.onReport("", report);
+
+        assertEq(target.value(), 123);
     }
 
     function test_onReport_emptyCalldata_justDeploys() public {

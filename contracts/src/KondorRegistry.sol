@@ -9,6 +9,8 @@ import {SimpleAccount} from "./SimpleAccount.sol";
 /// @notice Deploys SimpleAccounts via CREATE2 keyed by a bytes32 salt.
 ///         Receives CRE reports and forwards calldata batches to the target account.
 contract KondorRegistry is IReceiver, Ownable {
+    bytes32 internal constant EVENT_REPORT_MAGIC = keccak256("KONDOR_EVENT_REPORT_V1");
+
     // -----------------------------------------------------------------------
     // State
     // -----------------------------------------------------------------------
@@ -22,16 +24,22 @@ contract KondorRegistry is IReceiver, Ownable {
     /// @notice salt → deployed SimpleAccount address
     mapping(bytes32 => address) public accounts;
 
-
     // -----------------------------------------------------------------------
     // Events
     // -----------------------------------------------------------------------
 
     // 0 = Railgun (private), 1 = OffRamp (cash out), 2 = ForwardTo (send to receiver)
-    enum Mode { Railgun, OffRamp, ForwardTo }
+    enum Mode {
+        Railgun,
+        OffRamp,
+        ForwardTo
+    }
 
     event AccountCreated(bytes32 indexed salt, address account, bytes32 hashedOwner);
-    event ReportProcessed(address indexed account, uint256 callCount, address[] touchedTokens, bool isSweepable, Mode mode);
+    event ReportProcessed(
+        address indexed account, uint256 callCount, address[] touchedTokens, bool isSweepable, Mode mode
+    );
+    event ShieldReportProcessed(address indexed account, uint256 callCount, address[] touchedTokens);
     event ForwarderUpdated(address oldForwarder, address newForwarder);
 
     // -----------------------------------------------------------------------
@@ -41,6 +49,7 @@ contract KondorRegistry is IReceiver, Ownable {
     error UnauthorizedForwarder();
     error AccountAlreadyExists(bytes32 salt);
     error AccountDoesNotExist(bytes32 salt);
+    error InvalidEventAccount(address account);
     error ArrayLengthMismatch();
 
     // -----------------------------------------------------------------------
@@ -62,11 +71,32 @@ contract KondorRegistry is IReceiver, Ownable {
     ///      (bytes32 salt, bytes32 hashedOwner, address[] targets, uint256[] values, bytes[] calldatas, address[] touchedTokens, bool isSweepable, uint8 mode)
     ///      - If the SA doesn't exist it is deployed + initialized first.
     ///      - Then batchExecute is called with the provided calldata array.
-    function onReport(bytes calldata /* metadata */, bytes calldata report) external override {
+    ///      - The mode is used to determine the action to take.
+    ///      - The touchedTokens are the tokens that were touched by the calldata.
+    ///      - The isSweepable is a boolean that indicates if the account should be swept.
+    ///      - The mode is a uint8 that indicates the mode of the account.
+    ///      - The mode is a uint8 that indicates the mode of the account.
+    function onReport(
+        bytes calldata,
+        /* metadata */
+        bytes calldata report
+    )
+        external
+        override
+    {
         if (forwarder != address(0) && msg.sender != forwarder) {
             revert UnauthorizedForwarder();
         }
 
+        if (_isEventReport(report)) {
+            _handleEventReport(report);
+            return;
+        }
+
+        _handleInitialReport(report);
+    }
+
+    function _handleInitialReport(bytes calldata report) internal {
         (
             bytes32 salt,
             bytes32 hashedOwner_,
@@ -93,6 +123,37 @@ contract KondorRegistry is IReceiver, Ownable {
         }
 
         emit ReportProcessed(account, targets.length, touchedTokens, isSweepable, Mode(mode_));
+    }
+
+    function _handleEventReport(bytes calldata report) internal {
+        (
+            bytes32 magic,
+            address account,
+            address[] memory targets,
+            uint256[] memory values,
+            bytes[] memory calldatas,
+            address[] memory touchedTokens
+        ) = abi.decode(report, (bytes32, address, address[], uint256[], bytes[], address[]));
+
+        if (magic != EVENT_REPORT_MAGIC) {
+            revert InvalidEventAccount(account);
+        }
+
+        try SimpleAccount(payable(account)).registry() returns (address registry_) {
+            if (registry_ != address(this)) revert InvalidEventAccount(account);
+        } catch {
+            revert InvalidEventAccount(account);
+        }
+
+        if (targets.length != values.length || targets.length != calldatas.length) {
+            revert ArrayLengthMismatch();
+        }
+
+        if (targets.length > 0) {
+            SimpleAccount(payable(account)).batchExecute(targets, values, calldatas);
+        }
+
+        emit ShieldReportProcessed(account, targets.length, touchedTokens);
     }
 
     // -----------------------------------------------------------------------
@@ -130,9 +191,8 @@ contract KondorRegistry is IReceiver, Ownable {
 
     /// @notice Predict the CREATE2 address for a salt before deployment.
     function predictAddress(bytes32 salt) external view returns (address) {
-        bytes32 hash = keccak256(
-            abi.encodePacked(bytes1(0xff), address(this), salt, keccak256(type(SimpleAccount).creationCode))
-        );
+        bytes32 hash =
+            keccak256(abi.encodePacked(bytes1(0xff), address(this), salt, keccak256(type(SimpleAccount).creationCode)));
         return address(uint160(uint256(hash)));
     }
 
@@ -163,5 +223,15 @@ contract KondorRegistry is IReceiver, Ownable {
 
         emit AccountCreated(salt, address(account), hashedOwner_);
         return address(account);
+    }
+
+    function _isEventReport(bytes calldata report) internal pure returns (bool) {
+        if (report.length < 32) return false;
+
+        bytes32 prefix;
+        assembly {
+            prefix := calldataload(report.offset)
+        }
+        return prefix == EVENT_REPORT_MAGIC;
     }
 }

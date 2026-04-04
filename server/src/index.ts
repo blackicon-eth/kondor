@@ -6,6 +6,7 @@ import { loadWatchedAddresses, saveWatchedAddresses } from "./addressStore";
 import { config } from "./config";
 import { createAlchemyWebhookHandler } from "./webhookHandler";
 import { createBatchSwap5792, type BatchSwap5792Request } from "./uniswap";
+import { createRailgunShieldBatch } from "./railgun";
 import {
   configureGatewayDeps,
   handleGatewayRequest,
@@ -164,6 +165,36 @@ async function bootstrap(): Promise<void> {
 
       const payload = req.body as BatchSwap5792Request;
       const result = await createBatchSwap5792(payload, config.uniswapApiKey);
+      res.json({ ok: true, ...result });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(400).json({ ok: false, error: message });
+    }
+  });
+
+  app.post("/railgun/shield-calls", async (req, res) => {
+    try {
+      const balancesInput = Array.isArray(req.body?.balances) ? req.body.balances : null;
+      if (!balancesInput) {
+        res.status(400).json({ ok: false, error: "balances array is required" });
+        return;
+      }
+
+      const balances = balancesInput.flatMap((item: unknown) => {
+        if (!item || typeof item !== "object") return [];
+        const token = typeof (item as { token?: unknown }).token === "string"
+          ? (item as { token: string }).token
+          : null;
+        const balance = typeof (item as { balance?: unknown }).balance === "string"
+          ? (item as { balance: string }).balance
+          : null;
+
+        if (!token || !balance) return [];
+
+        return [{ token: token as `0x${string}`, balance: BigInt(balance) }];
+      });
+
+      const result = await createRailgunShieldBatch(balances);
       res.json({ ok: true, ...result });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

@@ -241,6 +241,7 @@ var init_abiItem = __esm(() => {
     }
   };
 });
+var InvalidAbiParametersError;
 var InvalidParameterError;
 var SolidityProtectedKeywordError;
 var InvalidModifierError;
@@ -248,6 +249,20 @@ var InvalidFunctionModifierError;
 var InvalidAbiTypeParameterError;
 var init_abiParameter = __esm(() => {
   init_errors();
+  InvalidAbiParametersError = class InvalidAbiParametersError2 extends BaseError {
+    constructor({ params }) {
+      super("Failed to parse ABI parameters.", {
+        details: `parseAbiParameters(${JSON.stringify(params, null, 2)})`,
+        docsPath: "/api/human#parseabiparameters-1"
+      });
+      Object.defineProperty(this, "name", {
+        enumerable: true,
+        configurable: true,
+        writable: true,
+        value: "InvalidAbiParametersError"
+      });
+    }
+  };
   InvalidParameterError = class InvalidParameterError2 extends BaseError {
     constructor({ param }) {
       super("Invalid ABI parameter.", {
@@ -783,9 +798,43 @@ var init_parseAbi = __esm(() => {
   init_structs();
   init_utils();
 });
+function parseAbiParameters(params) {
+  const abiParameters = [];
+  if (typeof params === "string") {
+    const parameters = splitParameters(params);
+    const length = parameters.length;
+    for (let i2 = 0;i2 < length; i2++) {
+      abiParameters.push(parseAbiParameter(parameters[i2], { modifiers }));
+    }
+  } else {
+    const structs = parseStructs(params);
+    const length = params.length;
+    for (let i2 = 0;i2 < length; i2++) {
+      const signature = params[i2];
+      if (isStructSignature(signature))
+        continue;
+      const parameters = splitParameters(signature);
+      const length2 = parameters.length;
+      for (let k = 0;k < length2; k++) {
+        abiParameters.push(parseAbiParameter(parameters[k], { modifiers, structs }));
+      }
+    }
+  }
+  if (abiParameters.length === 0)
+    throw new InvalidAbiParametersError({ params });
+  return abiParameters;
+}
+var init_parseAbiParameters = __esm(() => {
+  init_abiParameter();
+  init_signatures();
+  init_structs();
+  init_utils();
+  init_utils();
+});
 var init_exports = __esm(() => {
   init_formatAbiItem();
   init_parseAbi();
+  init_parseAbiParameters();
 });
 function formatAbiItem2(abiItem, { includeName = false } = {}) {
   if (abiItem.type !== "function" && abiItem.type !== "event" && abiItem.type !== "error")
@@ -909,14 +958,23 @@ var init_base = __esm(() => {
 });
 var AbiDecodingDataSizeTooSmallError;
 var AbiDecodingZeroDataError;
+var AbiEncodingArrayLengthMismatchError;
+var AbiEncodingBytesSizeMismatchError;
+var AbiEncodingLengthMismatchError;
 var AbiEventSignatureEmptyTopicsError;
 var AbiEventSignatureNotFoundError;
+var AbiFunctionNotFoundError;
+var AbiFunctionOutputsNotFoundError;
+var AbiItemAmbiguityError;
 var DecodeLogDataMismatch;
 var DecodeLogTopicsMismatch;
+var InvalidAbiEncodingTypeError;
 var InvalidAbiDecodingTypeError;
+var InvalidArrayError;
 var InvalidDefinitionTypeError;
 var init_abi = __esm(() => {
   init_formatAbiItem2();
+  init_size();
   init_base();
   AbiDecodingDataSizeTooSmallError = class AbiDecodingDataSizeTooSmallError2 extends BaseError2 {
     constructor({ data, params, size: size2 }) {
@@ -959,6 +1017,31 @@ var init_abi = __esm(() => {
       });
     }
   };
+  AbiEncodingArrayLengthMismatchError = class AbiEncodingArrayLengthMismatchError2 extends BaseError2 {
+    constructor({ expectedLength, givenLength, type }) {
+      super([
+        `ABI encoding array length mismatch for type ${type}.`,
+        `Expected length: ${expectedLength}`,
+        `Given length: ${givenLength}`
+      ].join(`
+`), { name: "AbiEncodingArrayLengthMismatchError" });
+    }
+  };
+  AbiEncodingBytesSizeMismatchError = class AbiEncodingBytesSizeMismatchError2 extends BaseError2 {
+    constructor({ expectedSize, value: value2 }) {
+      super(`Size of bytes "${value2}" (bytes${size(value2)}) does not match expected size (bytes${expectedSize}).`, { name: "AbiEncodingBytesSizeMismatchError" });
+    }
+  };
+  AbiEncodingLengthMismatchError = class AbiEncodingLengthMismatchError2 extends BaseError2 {
+    constructor({ expectedLength, givenLength }) {
+      super([
+        "ABI encoding params/values length mismatch.",
+        `Expected length (params): ${expectedLength}`,
+        `Given length (values): ${givenLength}`
+      ].join(`
+`), { name: "AbiEncodingLengthMismatchError" });
+    }
+  };
   AbiEventSignatureEmptyTopicsError = class AbiEventSignatureEmptyTopicsError2 extends BaseError2 {
     constructor({ docsPath }) {
       super("Cannot extract event signature from empty topics.", {
@@ -977,6 +1060,45 @@ var init_abi = __esm(() => {
 `), {
         docsPath,
         name: "AbiEventSignatureNotFoundError"
+      });
+    }
+  };
+  AbiFunctionNotFoundError = class AbiFunctionNotFoundError2 extends BaseError2 {
+    constructor(functionName, { docsPath } = {}) {
+      super([
+        `Function ${functionName ? `"${functionName}" ` : ""}not found on ABI.`,
+        "Make sure you are using the correct ABI and that the function exists on it."
+      ].join(`
+`), {
+        docsPath,
+        name: "AbiFunctionNotFoundError"
+      });
+    }
+  };
+  AbiFunctionOutputsNotFoundError = class AbiFunctionOutputsNotFoundError2 extends BaseError2 {
+    constructor(functionName, { docsPath }) {
+      super([
+        `Function "${functionName}" does not contain any \`outputs\` on ABI.`,
+        "Cannot decode function result without knowing what the parameter types are.",
+        "Make sure you are using the correct ABI and that the function exists on it."
+      ].join(`
+`), {
+        docsPath,
+        name: "AbiFunctionOutputsNotFoundError"
+      });
+    }
+  };
+  AbiItemAmbiguityError = class AbiItemAmbiguityError2 extends BaseError2 {
+    constructor(x, y) {
+      super("Found ambiguous types in overloaded ABI items.", {
+        metaMessages: [
+          `\`${x.type}\` in \`${formatAbiItem2(x.abiItem)}\`, and`,
+          `\`${y.type}\` in \`${formatAbiItem2(y.abiItem)}\``,
+          "",
+          "These types encode differently and cannot be distinguished at runtime.",
+          "Remove one of the ambiguous items in the ABI."
+        ],
+        name: "AbiItemAmbiguityError"
       });
     }
   };
@@ -1037,6 +1159,15 @@ var init_abi = __esm(() => {
       this.abiItem = abiItem;
     }
   };
+  InvalidAbiEncodingTypeError = class InvalidAbiEncodingTypeError2 extends BaseError2 {
+    constructor(type, { docsPath }) {
+      super([
+        `Type "${type}" is not a valid encoding type.`,
+        "Please provide a valid ABI type."
+      ].join(`
+`), { docsPath, name: "InvalidAbiEncodingType" });
+    }
+  };
   InvalidAbiDecodingTypeError = class InvalidAbiDecodingTypeError2 extends BaseError2 {
     constructor(type, { docsPath }) {
       super([
@@ -1044,6 +1175,14 @@ var init_abi = __esm(() => {
         "Please provide a valid ABI type."
       ].join(`
 `), { docsPath, name: "InvalidAbiDecodingType" });
+    }
+  };
+  InvalidArrayError = class InvalidArrayError2 extends BaseError2 {
+    constructor(value2) {
+      super([`Value "${value2}" is not a valid array.`].join(`
+`), {
+        name: "InvalidArrayError"
+      });
     }
   };
   InvalidDefinitionTypeError = class InvalidDefinitionTypeError2 extends BaseError2 {
@@ -1714,6 +1853,21 @@ var init_toEventSelector = __esm(() => {
   init_toSignatureHash();
   toEventSelector = toSignatureHash;
 });
+var InvalidAddressError;
+var init_address = __esm(() => {
+  init_base();
+  InvalidAddressError = class InvalidAddressError2 extends BaseError2 {
+    constructor({ address }) {
+      super(`Address "${address}" is invalid.`, {
+        metaMessages: [
+          "- Address must be a hex value of 20 bytes (40 hex characters).",
+          "- Address must match its checksum counterpart."
+        ],
+        name: "InvalidAddressError"
+      });
+    }
+  };
+});
 var LruMap;
 var init_lru = __esm(() => {
   LruMap = class LruMap2 extends Map {
@@ -1773,6 +1927,61 @@ var init_getAddress = __esm(() => {
   init_lru();
   checksumAddressCache = /* @__PURE__ */ new LruMap(8192);
 });
+function isAddress(address, options) {
+  const { strict = true } = options ?? {};
+  const cacheKey = `${address}.${strict}`;
+  if (isAddressCache.has(cacheKey))
+    return isAddressCache.get(cacheKey);
+  const result = (() => {
+    if (!addressRegex.test(address))
+      return false;
+    if (address.toLowerCase() === address)
+      return true;
+    if (strict)
+      return checksumAddress(address) === address;
+    return true;
+  })();
+  isAddressCache.set(cacheKey, result);
+  return result;
+}
+var addressRegex;
+var isAddressCache;
+var init_isAddress = __esm(() => {
+  init_lru();
+  init_getAddress();
+  addressRegex = /^0x[a-fA-F0-9]{40}$/;
+  isAddressCache = /* @__PURE__ */ new LruMap(8192);
+});
+function concat2(values) {
+  if (typeof values[0] === "string")
+    return concatHex(values);
+  return concatBytes(values);
+}
+function concatBytes(values) {
+  let length = 0;
+  for (const arr of values) {
+    length += arr.length;
+  }
+  const result = new Uint8Array(length);
+  let offset = 0;
+  for (const arr of values) {
+    result.set(arr, offset);
+    offset += arr.length;
+  }
+  return result;
+}
+function concatHex(values) {
+  return `0x${values.reduce((acc, x) => acc + x.replace("0x", ""), "")}`;
+}
+function slice2(value2, start, end, { strict } = {}) {
+  if (isHex(value2, { strict: false }))
+    return sliceHex(value2, start, end, {
+      strict
+    });
+  return sliceBytes(value2, start, end, {
+    strict
+  });
+}
 function assertStartOffset(value2, start) {
   if (typeof start === "number" && start > 0 && start > size(value2) - 1)
     throw new SliceOffsetOutOfBoundsError({
@@ -1797,15 +2006,405 @@ function sliceBytes(value_, start, end, { strict } = {}) {
     assertEndOffset(value2, start, end);
   return value2;
 }
+function sliceHex(value_, start, end, { strict } = {}) {
+  assertStartOffset(value_, start);
+  const value2 = `0x${value_.replace("0x", "").slice((start ?? 0) * 2, (end ?? value_.length) * 2)}`;
+  if (strict)
+    assertEndOffset(value2, start, end);
+  return value2;
+}
 var init_slice = __esm(() => {
   init_data();
   init_size();
 });
+var integerRegex2;
+var init_regex2 = __esm(() => {
+  integerRegex2 = /^(u?int)(8|16|24|32|40|48|56|64|72|80|88|96|104|112|120|128|136|144|152|160|168|176|184|192|200|208|216|224|232|240|248|256)?$/;
+});
+function encodeAbiParameters(params, values) {
+  if (params.length !== values.length)
+    throw new AbiEncodingLengthMismatchError({
+      expectedLength: params.length,
+      givenLength: values.length
+    });
+  const preparedParams = prepareParams({
+    params,
+    values
+  });
+  const data = encodeParams(preparedParams);
+  if (data.length === 0)
+    return "0x";
+  return data;
+}
+function prepareParams({ params, values }) {
+  const preparedParams = [];
+  for (let i2 = 0;i2 < params.length; i2++) {
+    preparedParams.push(prepareParam({ param: params[i2], value: values[i2] }));
+  }
+  return preparedParams;
+}
+function prepareParam({ param, value: value2 }) {
+  const arrayComponents = getArrayComponents(param.type);
+  if (arrayComponents) {
+    const [length, type] = arrayComponents;
+    return encodeArray(value2, { length, param: { ...param, type } });
+  }
+  if (param.type === "tuple") {
+    return encodeTuple(value2, {
+      param
+    });
+  }
+  if (param.type === "address") {
+    return encodeAddress(value2);
+  }
+  if (param.type === "bool") {
+    return encodeBool(value2);
+  }
+  if (param.type.startsWith("uint") || param.type.startsWith("int")) {
+    const signed = param.type.startsWith("int");
+    const [, , size2 = "256"] = integerRegex2.exec(param.type) ?? [];
+    return encodeNumber(value2, {
+      signed,
+      size: Number(size2)
+    });
+  }
+  if (param.type.startsWith("bytes")) {
+    return encodeBytes(value2, { param });
+  }
+  if (param.type === "string") {
+    return encodeString(value2);
+  }
+  throw new InvalidAbiEncodingTypeError(param.type, {
+    docsPath: "/docs/contract/encodeAbiParameters"
+  });
+}
+function encodeParams(preparedParams) {
+  let staticSize = 0;
+  for (let i2 = 0;i2 < preparedParams.length; i2++) {
+    const { dynamic, encoded } = preparedParams[i2];
+    if (dynamic)
+      staticSize += 32;
+    else
+      staticSize += size(encoded);
+  }
+  const staticParams = [];
+  const dynamicParams = [];
+  let dynamicSize = 0;
+  for (let i2 = 0;i2 < preparedParams.length; i2++) {
+    const { dynamic, encoded } = preparedParams[i2];
+    if (dynamic) {
+      staticParams.push(numberToHex(staticSize + dynamicSize, { size: 32 }));
+      dynamicParams.push(encoded);
+      dynamicSize += size(encoded);
+    } else {
+      staticParams.push(encoded);
+    }
+  }
+  return concat2([...staticParams, ...dynamicParams]);
+}
+function encodeAddress(value2) {
+  if (!isAddress(value2))
+    throw new InvalidAddressError({ address: value2 });
+  return { dynamic: false, encoded: padHex(value2.toLowerCase()) };
+}
+function encodeArray(value2, { length, param }) {
+  const dynamic = length === null;
+  if (!Array.isArray(value2))
+    throw new InvalidArrayError(value2);
+  if (!dynamic && value2.length !== length)
+    throw new AbiEncodingArrayLengthMismatchError({
+      expectedLength: length,
+      givenLength: value2.length,
+      type: `${param.type}[${length}]`
+    });
+  let dynamicChild = false;
+  const preparedParams = [];
+  for (let i2 = 0;i2 < value2.length; i2++) {
+    const preparedParam = prepareParam({ param, value: value2[i2] });
+    if (preparedParam.dynamic)
+      dynamicChild = true;
+    preparedParams.push(preparedParam);
+  }
+  if (dynamic || dynamicChild) {
+    const data = encodeParams(preparedParams);
+    if (dynamic) {
+      const length2 = numberToHex(preparedParams.length, { size: 32 });
+      return {
+        dynamic: true,
+        encoded: preparedParams.length > 0 ? concat2([length2, data]) : length2
+      };
+    }
+    if (dynamicChild)
+      return { dynamic: true, encoded: data };
+  }
+  return {
+    dynamic: false,
+    encoded: concat2(preparedParams.map(({ encoded }) => encoded))
+  };
+}
+function encodeBytes(value2, { param }) {
+  const [, paramSize] = param.type.split("bytes");
+  const bytesSize = size(value2);
+  if (!paramSize) {
+    let value_ = value2;
+    if (bytesSize % 32 !== 0)
+      value_ = padHex(value_, {
+        dir: "right",
+        size: Math.ceil((value2.length - 2) / 2 / 32) * 32
+      });
+    return {
+      dynamic: true,
+      encoded: concat2([padHex(numberToHex(bytesSize, { size: 32 })), value_])
+    };
+  }
+  if (bytesSize !== Number.parseInt(paramSize, 10))
+    throw new AbiEncodingBytesSizeMismatchError({
+      expectedSize: Number.parseInt(paramSize, 10),
+      value: value2
+    });
+  return { dynamic: false, encoded: padHex(value2, { dir: "right" }) };
+}
+function encodeBool(value2) {
+  if (typeof value2 !== "boolean")
+    throw new BaseError2(`Invalid boolean value: "${value2}" (type: ${typeof value2}). Expected: \`true\` or \`false\`.`);
+  return { dynamic: false, encoded: padHex(boolToHex(value2)) };
+}
+function encodeNumber(value2, { signed, size: size2 = 256 }) {
+  if (typeof size2 === "number") {
+    const max = 2n ** (BigInt(size2) - (signed ? 1n : 0n)) - 1n;
+    const min = signed ? -max - 1n : 0n;
+    if (value2 > max || value2 < min)
+      throw new IntegerOutOfRangeError({
+        max: max.toString(),
+        min: min.toString(),
+        signed,
+        size: size2 / 8,
+        value: value2.toString()
+      });
+  }
+  return {
+    dynamic: false,
+    encoded: numberToHex(value2, {
+      size: 32,
+      signed
+    })
+  };
+}
+function encodeString(value2) {
+  const hexValue = stringToHex(value2);
+  const partsLength = Math.ceil(size(hexValue) / 32);
+  const parts = [];
+  for (let i2 = 0;i2 < partsLength; i2++) {
+    parts.push(padHex(slice2(hexValue, i2 * 32, (i2 + 1) * 32), {
+      dir: "right"
+    }));
+  }
+  return {
+    dynamic: true,
+    encoded: concat2([
+      padHex(numberToHex(size(hexValue), { size: 32 })),
+      ...parts
+    ])
+  };
+}
+function encodeTuple(value2, { param }) {
+  let dynamic = false;
+  const preparedParams = [];
+  for (let i2 = 0;i2 < param.components.length; i2++) {
+    const param_ = param.components[i2];
+    const index = Array.isArray(value2) ? i2 : param_.name;
+    const preparedParam = prepareParam({
+      param: param_,
+      value: value2[index]
+    });
+    preparedParams.push(preparedParam);
+    if (preparedParam.dynamic)
+      dynamic = true;
+  }
+  return {
+    dynamic,
+    encoded: dynamic ? encodeParams(preparedParams) : concat2(preparedParams.map(({ encoded }) => encoded))
+  };
+}
 function getArrayComponents(type) {
   const matches = type.match(/^(.*)\[(\d+)?\]$/);
   return matches ? [matches[2] ? Number(matches[2]) : null, matches[1]] : undefined;
 }
-var init_encodeAbiParameters = () => {};
+var init_encodeAbiParameters = __esm(() => {
+  init_abi();
+  init_address();
+  init_base();
+  init_encoding();
+  init_isAddress();
+  init_pad();
+  init_size();
+  init_slice();
+  init_toHex();
+  init_regex2();
+});
+var toFunctionSelector = (fn) => slice2(toSignatureHash(fn), 0, 4);
+var init_toFunctionSelector = __esm(() => {
+  init_slice();
+  init_toSignatureHash();
+});
+function getAbiItem(parameters) {
+  const { abi, args = [], name } = parameters;
+  const isSelector = isHex(name, { strict: false });
+  const abiItems = abi.filter((abiItem) => {
+    if (isSelector) {
+      if (abiItem.type === "function")
+        return toFunctionSelector(abiItem) === name;
+      if (abiItem.type === "event")
+        return toEventSelector(abiItem) === name;
+      return false;
+    }
+    return "name" in abiItem && abiItem.name === name;
+  });
+  if (abiItems.length === 0)
+    return;
+  if (abiItems.length === 1)
+    return abiItems[0];
+  let matchedAbiItem;
+  for (const abiItem of abiItems) {
+    if (!("inputs" in abiItem))
+      continue;
+    if (!args || args.length === 0) {
+      if (!abiItem.inputs || abiItem.inputs.length === 0)
+        return abiItem;
+      continue;
+    }
+    if (!abiItem.inputs)
+      continue;
+    if (abiItem.inputs.length === 0)
+      continue;
+    if (abiItem.inputs.length !== args.length)
+      continue;
+    const matched = args.every((arg, index) => {
+      const abiParameter = "inputs" in abiItem && abiItem.inputs[index];
+      if (!abiParameter)
+        return false;
+      return isArgOfType(arg, abiParameter);
+    });
+    if (matched) {
+      if (matchedAbiItem && "inputs" in matchedAbiItem && matchedAbiItem.inputs) {
+        const ambiguousTypes = getAmbiguousTypes(abiItem.inputs, matchedAbiItem.inputs, args);
+        if (ambiguousTypes)
+          throw new AbiItemAmbiguityError({
+            abiItem,
+            type: ambiguousTypes[0]
+          }, {
+            abiItem: matchedAbiItem,
+            type: ambiguousTypes[1]
+          });
+      }
+      matchedAbiItem = abiItem;
+    }
+  }
+  if (matchedAbiItem)
+    return matchedAbiItem;
+  return abiItems[0];
+}
+function isArgOfType(arg, abiParameter) {
+  const argType = typeof arg;
+  const abiParameterType = abiParameter.type;
+  switch (abiParameterType) {
+    case "address":
+      return isAddress(arg, { strict: false });
+    case "bool":
+      return argType === "boolean";
+    case "function":
+      return argType === "string";
+    case "string":
+      return argType === "string";
+    default: {
+      if (abiParameterType === "tuple" && "components" in abiParameter)
+        return Object.values(abiParameter.components).every((component, index) => {
+          return argType === "object" && isArgOfType(Object.values(arg)[index], component);
+        });
+      if (/^u?int(8|16|24|32|40|48|56|64|72|80|88|96|104|112|120|128|136|144|152|160|168|176|184|192|200|208|216|224|232|240|248|256)?$/.test(abiParameterType))
+        return argType === "number" || argType === "bigint";
+      if (/^bytes([1-9]|1[0-9]|2[0-9]|3[0-2])?$/.test(abiParameterType))
+        return argType === "string" || arg instanceof Uint8Array;
+      if (/[a-z]+[1-9]{0,3}(\[[0-9]{0,}\])+$/.test(abiParameterType)) {
+        return Array.isArray(arg) && arg.every((x) => isArgOfType(x, {
+          ...abiParameter,
+          type: abiParameterType.replace(/(\[[0-9]{0,}\])$/, "")
+        }));
+      }
+      return false;
+    }
+  }
+}
+function getAmbiguousTypes(sourceParameters, targetParameters, args) {
+  for (const parameterIndex in sourceParameters) {
+    const sourceParameter = sourceParameters[parameterIndex];
+    const targetParameter = targetParameters[parameterIndex];
+    if (sourceParameter.type === "tuple" && targetParameter.type === "tuple" && "components" in sourceParameter && "components" in targetParameter)
+      return getAmbiguousTypes(sourceParameter.components, targetParameter.components, args[parameterIndex]);
+    const types4 = [sourceParameter.type, targetParameter.type];
+    const ambiguous = (() => {
+      if (types4.includes("address") && types4.includes("bytes20"))
+        return true;
+      if (types4.includes("address") && types4.includes("string"))
+        return isAddress(args[parameterIndex], { strict: false });
+      if (types4.includes("address") && types4.includes("bytes"))
+        return isAddress(args[parameterIndex], { strict: false });
+      return false;
+    })();
+    if (ambiguous)
+      return types4;
+  }
+  return;
+}
+var init_getAbiItem = __esm(() => {
+  init_abi();
+  init_isAddress();
+  init_toEventSelector();
+  init_toFunctionSelector();
+});
+function prepareEncodeFunctionData(parameters) {
+  const { abi, args, functionName } = parameters;
+  let abiItem = abi[0];
+  if (functionName) {
+    const item = getAbiItem({
+      abi,
+      args,
+      name: functionName
+    });
+    if (!item)
+      throw new AbiFunctionNotFoundError(functionName, { docsPath });
+    abiItem = item;
+  }
+  if (abiItem.type !== "function")
+    throw new AbiFunctionNotFoundError(undefined, { docsPath });
+  return {
+    abi: [abiItem],
+    functionName: toFunctionSelector(formatAbiItem2(abiItem))
+  };
+}
+var docsPath = "/docs/contract/encodeFunctionData";
+var init_prepareEncodeFunctionData = __esm(() => {
+  init_abi();
+  init_toFunctionSelector();
+  init_formatAbiItem2();
+  init_getAbiItem();
+});
+function encodeFunctionData(parameters) {
+  const { args } = parameters;
+  const { abi, functionName } = (() => {
+    if (parameters.abi.length === 1 && parameters.functionName?.startsWith("0x"))
+      return parameters;
+    return prepareEncodeFunctionData(parameters);
+  })();
+  const abiItem = abi[0];
+  const signature = functionName;
+  const data = "inputs" in abiItem && abiItem.inputs ? encodeAbiParameters(abiItem.inputs, args ?? []) : undefined;
+  return concatHex([signature, data ?? "0x"]);
+}
+var init_encodeFunctionData = __esm(() => {
+  init_encodeAbiParameters();
+  init_prepareEncodeFunctionData();
+});
 var NegativeOffsetError;
 var PositionOutOfBoundsError;
 var RecursiveReadLimitExceededError;
@@ -2230,6 +2829,366 @@ var init_decodeAbiParameters = __esm(() => {
   init_toBytes();
   init_toHex();
   init_encodeAbiParameters();
+});
+function decodeFunctionResult(parameters) {
+  const { abi, args, functionName, data } = parameters;
+  let abiItem = abi[0];
+  if (functionName) {
+    const item = getAbiItem({ abi, args, name: functionName });
+    if (!item)
+      throw new AbiFunctionNotFoundError(functionName, { docsPath: docsPath3 });
+    abiItem = item;
+  }
+  if (abiItem.type !== "function")
+    throw new AbiFunctionNotFoundError(undefined, { docsPath: docsPath3 });
+  if (!abiItem.outputs)
+    throw new AbiFunctionOutputsNotFoundError(abiItem.name, { docsPath: docsPath3 });
+  const values = decodeAbiParameters(abiItem.outputs, data);
+  if (values && values.length > 1)
+    return values;
+  if (values && values.length === 1)
+    return values[0];
+  return;
+}
+var docsPath3 = "/docs/contract/decodeFunctionResult";
+var init_decodeFunctionResult = __esm(() => {
+  init_abi();
+  init_decodeAbiParameters();
+  init_getAbiItem();
+});
+var universalResolverErrors;
+var universalResolverResolveAbi;
+var universalResolverReverseAbi;
+var erc20Abi;
+var init_abis = __esm(() => {
+  universalResolverErrors = [
+    {
+      inputs: [
+        {
+          name: "dns",
+          type: "bytes"
+        }
+      ],
+      name: "DNSDecodingFailed",
+      type: "error"
+    },
+    {
+      inputs: [
+        {
+          name: "ens",
+          type: "string"
+        }
+      ],
+      name: "DNSEncodingFailed",
+      type: "error"
+    },
+    {
+      inputs: [],
+      name: "EmptyAddress",
+      type: "error"
+    },
+    {
+      inputs: [
+        {
+          name: "status",
+          type: "uint16"
+        },
+        {
+          name: "message",
+          type: "string"
+        }
+      ],
+      name: "HttpError",
+      type: "error"
+    },
+    {
+      inputs: [],
+      name: "InvalidBatchGatewayResponse",
+      type: "error"
+    },
+    {
+      inputs: [
+        {
+          name: "errorData",
+          type: "bytes"
+        }
+      ],
+      name: "ResolverError",
+      type: "error"
+    },
+    {
+      inputs: [
+        {
+          name: "name",
+          type: "bytes"
+        },
+        {
+          name: "resolver",
+          type: "address"
+        }
+      ],
+      name: "ResolverNotContract",
+      type: "error"
+    },
+    {
+      inputs: [
+        {
+          name: "name",
+          type: "bytes"
+        }
+      ],
+      name: "ResolverNotFound",
+      type: "error"
+    },
+    {
+      inputs: [
+        {
+          name: "primary",
+          type: "string"
+        },
+        {
+          name: "primaryAddress",
+          type: "bytes"
+        }
+      ],
+      name: "ReverseAddressMismatch",
+      type: "error"
+    },
+    {
+      inputs: [
+        {
+          internalType: "bytes4",
+          name: "selector",
+          type: "bytes4"
+        }
+      ],
+      name: "UnsupportedResolverProfile",
+      type: "error"
+    }
+  ];
+  universalResolverResolveAbi = [
+    ...universalResolverErrors,
+    {
+      name: "resolveWithGateways",
+      type: "function",
+      stateMutability: "view",
+      inputs: [
+        { name: "name", type: "bytes" },
+        { name: "data", type: "bytes" },
+        { name: "gateways", type: "string[]" }
+      ],
+      outputs: [
+        { name: "", type: "bytes" },
+        { name: "address", type: "address" }
+      ]
+    }
+  ];
+  universalResolverReverseAbi = [
+    ...universalResolverErrors,
+    {
+      name: "reverseWithGateways",
+      type: "function",
+      stateMutability: "view",
+      inputs: [
+        { type: "bytes", name: "reverseName" },
+        { type: "uint256", name: "coinType" },
+        { type: "string[]", name: "gateways" }
+      ],
+      outputs: [
+        { type: "string", name: "resolvedName" },
+        { type: "address", name: "resolver" },
+        { type: "address", name: "reverseResolver" }
+      ]
+    }
+  ];
+  erc20Abi = [
+    {
+      type: "event",
+      name: "Approval",
+      inputs: [
+        {
+          indexed: true,
+          name: "owner",
+          type: "address"
+        },
+        {
+          indexed: true,
+          name: "spender",
+          type: "address"
+        },
+        {
+          indexed: false,
+          name: "value",
+          type: "uint256"
+        }
+      ]
+    },
+    {
+      type: "event",
+      name: "Transfer",
+      inputs: [
+        {
+          indexed: true,
+          name: "from",
+          type: "address"
+        },
+        {
+          indexed: true,
+          name: "to",
+          type: "address"
+        },
+        {
+          indexed: false,
+          name: "value",
+          type: "uint256"
+        }
+      ]
+    },
+    {
+      type: "function",
+      name: "allowance",
+      stateMutability: "view",
+      inputs: [
+        {
+          name: "owner",
+          type: "address"
+        },
+        {
+          name: "spender",
+          type: "address"
+        }
+      ],
+      outputs: [
+        {
+          type: "uint256"
+        }
+      ]
+    },
+    {
+      type: "function",
+      name: "approve",
+      stateMutability: "nonpayable",
+      inputs: [
+        {
+          name: "spender",
+          type: "address"
+        },
+        {
+          name: "amount",
+          type: "uint256"
+        }
+      ],
+      outputs: [
+        {
+          type: "bool"
+        }
+      ]
+    },
+    {
+      type: "function",
+      name: "balanceOf",
+      stateMutability: "view",
+      inputs: [
+        {
+          name: "account",
+          type: "address"
+        }
+      ],
+      outputs: [
+        {
+          type: "uint256"
+        }
+      ]
+    },
+    {
+      type: "function",
+      name: "decimals",
+      stateMutability: "view",
+      inputs: [],
+      outputs: [
+        {
+          type: "uint8"
+        }
+      ]
+    },
+    {
+      type: "function",
+      name: "name",
+      stateMutability: "view",
+      inputs: [],
+      outputs: [
+        {
+          type: "string"
+        }
+      ]
+    },
+    {
+      type: "function",
+      name: "symbol",
+      stateMutability: "view",
+      inputs: [],
+      outputs: [
+        {
+          type: "string"
+        }
+      ]
+    },
+    {
+      type: "function",
+      name: "totalSupply",
+      stateMutability: "view",
+      inputs: [],
+      outputs: [
+        {
+          type: "uint256"
+        }
+      ]
+    },
+    {
+      type: "function",
+      name: "transfer",
+      stateMutability: "nonpayable",
+      inputs: [
+        {
+          name: "recipient",
+          type: "address"
+        },
+        {
+          name: "amount",
+          type: "uint256"
+        }
+      ],
+      outputs: [
+        {
+          type: "bool"
+        }
+      ]
+    },
+    {
+      type: "function",
+      name: "transferFrom",
+      stateMutability: "nonpayable",
+      inputs: [
+        {
+          name: "sender",
+          type: "address"
+        },
+        {
+          name: "recipient",
+          type: "address"
+        },
+        {
+          name: "amount",
+          type: "uint256"
+        }
+      ],
+      outputs: [
+        {
+          type: "bool"
+        }
+      ]
+    }
+  ];
 });
 function isMessage(arg, schema) {
   const isMessage2 = arg !== null && typeof arg == "object" && "$typeName" in arg && typeof arg.$typeName == "string";
@@ -6004,6 +6963,7 @@ var ListSchema = /* @__PURE__ */ messageDesc(file_values_v1_values, 3);
 var DecimalSchema = /* @__PURE__ */ messageDesc(file_values_v1_values, 4);
 var file_sdk_v1alpha_sdk = /* @__PURE__ */ fileDesc("ChVzZGsvdjFhbHBoYS9zZGsucHJvdG8SC3Nkay52MWFscGhhIrQBChVTaW1wbGVDb25zZW5zdXNJbnB1dHMSIQoFdmFsdWUYASABKAsyEC52YWx1ZXMudjEuVmFsdWVIABIPCgVlcnJvchgCIAEoCUgAEjUKC2Rlc2NyaXB0b3JzGAMgASgLMiAuc2RrLnYxYWxwaGEuQ29uc2Vuc3VzRGVzY3JpcHRvchIhCgdkZWZhdWx0GAQgASgLMhAudmFsdWVzLnYxLlZhbHVlQg0KC29ic2VydmF0aW9uIpABCglGaWVsZHNNYXASMgoGZmllbGRzGAEgAygLMiIuc2RrLnYxYWxwaGEuRmllbGRzTWFwLkZpZWxkc0VudHJ5Gk8KC0ZpZWxkc0VudHJ5EgsKA2tleRgBIAEoCRIvCgV2YWx1ZRgCIAEoCzIgLnNkay52MWFscGhhLkNvbnNlbnN1c0Rlc2NyaXB0b3I6AjgBIoYBChNDb25zZW5zdXNEZXNjcmlwdG9yEjMKC2FnZ3JlZ2F0aW9uGAEgASgOMhwuc2RrLnYxYWxwaGEuQWdncmVnYXRpb25UeXBlSAASLAoKZmllbGRzX21hcBgCIAEoCzIWLnNkay52MWFscGhhLkZpZWxkc01hcEgAQgwKCmRlc2NyaXB0b3IiagoNUmVwb3J0UmVxdWVzdBIXCg9lbmNvZGVkX3BheWxvYWQYASABKAwSFAoMZW5jb2Rlcl9uYW1lGAIgASgJEhQKDHNpZ25pbmdfYWxnbxgDIAEoCRIUCgxoYXNoaW5nX2FsZ28YBCABKAkilwEKDlJlcG9ydFJlc3BvbnNlEhUKDWNvbmZpZ19kaWdlc3QYASABKAwSEgoGc2VxX25yGAIgASgEQgIwABIWCg5yZXBvcnRfY29udGV4dBgDIAEoDBISCgpyYXdfcmVwb3J0GAQgASgMEi4KBHNpZ3MYBSADKAsyIC5zZGsudjFhbHBoYS5BdHRyaWJ1dGVkU2lnbmF0dXJlIjsKE0F0dHJpYnV0ZWRTaWduYXR1cmUSEQoJc2lnbmF0dXJlGAEgASgMEhEKCXNpZ25lcl9pZBgCIAEoDSJrChFDYXBhYmlsaXR5UmVxdWVzdBIKCgJpZBgBIAEoCRIlCgdwYXlsb2FkGAIgASgLMhQuZ29vZ2xlLnByb3RvYnVmLkFueRIOCgZtZXRob2QYAyABKAkSEwoLY2FsbGJhY2tfaWQYBCABKAUiWgoSQ2FwYWJpbGl0eVJlc3BvbnNlEicKB3BheWxvYWQYASABKAsyFC5nb29nbGUucHJvdG9idWYuQW55SAASDwoFZXJyb3IYAiABKAlIAEIKCghyZXNwb25zZSJYChNUcmlnZ2VyU3Vic2NyaXB0aW9uEgoKAmlkGAEgASgJEiUKB3BheWxvYWQYAiABKAsyFC5nb29nbGUucHJvdG9idWYuQW55Eg4KBm1ldGhvZBgDIAEoCSJVChpUcmlnZ2VyU3Vic2NyaXB0aW9uUmVxdWVzdBI3Cg1zdWJzY3JpcHRpb25zGAEgAygLMiAuc2RrLnYxYWxwaGEuVHJpZ2dlclN1YnNjcmlwdGlvbiJACgdUcmlnZ2VyEg4KAmlkGAEgASgEQgIwABIlCgdwYXlsb2FkGAIgASgLMhQuZ29vZ2xlLnByb3RvYnVmLkFueSInChhBd2FpdENhcGFiaWxpdGllc1JlcXVlc3QSCwoDaWRzGAEgAygFIrgBChlBd2FpdENhcGFiaWxpdGllc1Jlc3BvbnNlEkgKCXJlc3BvbnNlcxgBIAMoCzI1LnNkay52MWFscGhhLkF3YWl0Q2FwYWJpbGl0aWVzUmVzcG9uc2UuUmVzcG9uc2VzRW50cnkaUQoOUmVzcG9uc2VzRW50cnkSCwoDa2V5GAEgASgFEi4KBXZhbHVlGAIgASgLMh8uc2RrLnYxYWxwaGEuQ2FwYWJpbGl0eVJlc3BvbnNlOgI4ASKgAQoORXhlY3V0ZVJlcXVlc3QSDgoGY29uZmlnGAEgASgMEisKCXN1YnNjcmliZRgCIAEoCzIWLmdvb2dsZS5wcm90b2J1Zi5FbXB0eUgAEicKB3RyaWdnZXIYAyABKAsyFC5zZGsudjFhbHBoYS5UcmlnZ2VySAASHQoRbWF4X3Jlc3BvbnNlX3NpemUYBCABKARCAjAAQgkKB3JlcXVlc3QimQEKD0V4ZWN1dGlvblJlc3VsdBIhCgV2YWx1ZRgBIAEoCzIQLnZhbHVlcy52MS5WYWx1ZUgAEg8KBWVycm9yGAIgASgJSAASSAoVdHJpZ2dlcl9zdWJzY3JpcHRpb25zGAMgASgLMicuc2RrLnYxYWxwaGEuVHJpZ2dlclN1YnNjcmlwdGlvblJlcXVlc3RIAEIICgZyZXN1bHQiVgoRR2V0U2VjcmV0c1JlcXVlc3QSLAoIcmVxdWVzdHMYASADKAsyGi5zZGsudjFhbHBoYS5TZWNyZXRSZXF1ZXN0EhMKC2NhbGxiYWNrX2lkGAIgASgFIiIKE0F3YWl0U2VjcmV0c1JlcXVlc3QSCwoDaWRzGAEgAygFIqsBChRBd2FpdFNlY3JldHNSZXNwb25zZRJDCglyZXNwb25zZXMYASADKAsyMC5zZGsudjFhbHBoYS5Bd2FpdFNlY3JldHNSZXNwb25zZS5SZXNwb25zZXNFbnRyeRpOCg5SZXNwb25zZXNFbnRyeRILCgNrZXkYASABKAUSKwoFdmFsdWUYAiABKAsyHC5zZGsudjFhbHBoYS5TZWNyZXRSZXNwb25zZXM6AjgBIi4KDVNlY3JldFJlcXVlc3QSCgoCaWQYASABKAkSEQoJbmFtZXNwYWNlGAIgASgJIkUKBlNlY3JldBIKCgJpZBgBIAEoCRIRCgluYW1lc3BhY2UYAiABKAkSDQoFb3duZXIYAyABKAkSDQoFdmFsdWUYBCABKAkiSgoLU2VjcmV0RXJyb3ISCgoCaWQYASABKAkSEQoJbmFtZXNwYWNlGAIgASgJEg0KBW93bmVyGAMgASgJEg0KBWVycm9yGAQgASgJIm4KDlNlY3JldFJlc3BvbnNlEiUKBnNlY3JldBgBIAEoCzITLnNkay52MWFscGhhLlNlY3JldEgAEikKBWVycm9yGAIgASgLMhguc2RrLnYxYWxwaGEuU2VjcmV0RXJyb3JIAEIKCghyZXNwb25zZSJBCg9TZWNyZXRSZXNwb25zZXMSLgoJcmVzcG9uc2VzGAEgAygLMhsuc2RrLnYxYWxwaGEuU2VjcmV0UmVzcG9uc2UquAEKD0FnZ3JlZ2F0aW9uVHlwZRIgChxBR0dSRUdBVElPTl9UWVBFX1VOU1BFQ0lGSUVEEAASGwoXQUdHUkVHQVRJT05fVFlQRV9NRURJQU4QARIeChpBR0dSRUdBVElPTl9UWVBFX0lERU5USUNBTBACEiIKHkFHR1JFR0FUSU9OX1RZUEVfQ09NTU9OX1BSRUZJWBADEiIKHkFHR1JFR0FUSU9OX1RZUEVfQ09NTU9OX1NVRkZJWBAEKjkKBE1vZGUSFAoQTU9ERV9VTlNQRUNJRklFRBAAEgwKCE1PREVfRE9OEAESDQoJTU9ERV9OT0RFEAJCaAoPY29tLnNkay52MWFscGhhQghTZGtQcm90b1ABogIDU1hYqgILU2RrLlYxYWxwaGHKAgtTZGtcVjFhbHBoYeICF1Nka1xWMWFscGhhXEdQQk1ldGFkYXRh6gIMU2RrOjpWMWFscGhhYgZwcm90bzM", [file_google_protobuf_any, file_google_protobuf_empty, file_values_v1_values]);
 var SimpleConsensusInputsSchema = /* @__PURE__ */ messageDesc(file_sdk_v1alpha_sdk, 0);
+var ConsensusDescriptorSchema = /* @__PURE__ */ messageDesc(file_sdk_v1alpha_sdk, 2);
 var ReportRequestSchema = /* @__PURE__ */ messageDesc(file_sdk_v1alpha_sdk, 3);
 var ReportResponseSchema = /* @__PURE__ */ messageDesc(file_sdk_v1alpha_sdk, 4);
 var CapabilityRequestSchema = /* @__PURE__ */ messageDesc(file_sdk_v1alpha_sdk, 6);
@@ -8132,6 +9092,25 @@ var LATEST_BLOCK_NUMBER = {
   absVal: Buffer.from([2]).toString("base64"),
   sign: "-1"
 };
+function text(responseOrFn) {
+  if (typeof responseOrFn === "function") {
+    return {
+      result: () => text(responseOrFn().result)
+    };
+  } else {
+    const decoder = new TextDecoder("utf-8");
+    return decoder.decode(responseOrFn.body).trim();
+  }
+}
+function ok(responseOrFn) {
+  if (typeof responseOrFn === "function") {
+    return {
+      result: () => ok(responseOrFn().result)
+    };
+  } else {
+    return responseOrFn.statusCode >= 200 && responseOrFn.statusCode < 300;
+  }
+}
 function sendReport(runtime, report, fn) {
   const rawReport = report.x_generatedCodeOnly_unwrap();
   const request = fn(rawReport);
@@ -12237,6 +13216,33 @@ var defaultLookup = new NetworkLookup({
   testnetBySelectorByFamily
 });
 var getNetwork = (options) => defaultLookup.find(options);
+function consensusIdenticalAggregation() {
+  return simpleConsensus(AggregationType.IDENTICAL);
+}
+
+class ConsensusImpl {
+  descriptor;
+  defaultValue;
+  constructor(descriptor, defaultValue) {
+    this.descriptor = descriptor;
+    this.defaultValue = defaultValue;
+  }
+  withDefault(t) {
+    return new ConsensusImpl(this.descriptor, t);
+  }
+  _usesUToForceShape(_) {}
+}
+function simpleConsensus(agg) {
+  return new ConsensusImpl(simpleDescriptor(agg));
+}
+function simpleDescriptor(agg) {
+  return create(ConsensusDescriptorSchema, {
+    descriptor: {
+      case: "aggregation",
+      value: agg
+    }
+  });
+}
 
 class Int64 {
   static INT64_MIN = -(2n ** 63n);
@@ -17143,16 +18149,16 @@ init_size();
 init_toEventSelector();
 init_decodeAbiParameters();
 init_formatAbiItem2();
-var docsPath = "/docs/contract/decodeEventLog";
+var docsPath2 = "/docs/contract/decodeEventLog";
 function decodeEventLog(parameters) {
   const { abi, data, strict: strict_, topics } = parameters;
   const strict = strict_ ?? true;
   const [signature, ...argTopics] = topics;
   if (!signature)
-    throw new AbiEventSignatureEmptyTopicsError({ docsPath });
+    throw new AbiEventSignatureEmptyTopicsError({ docsPath: docsPath2 });
   const abiItem = abi.find((x) => x.type === "event" && signature === toEventSelector(formatAbiItem2(x)));
   if (!(abiItem && ("name" in abiItem)) || abiItem.type !== "event")
-    throw new AbiEventSignatureNotFoundError(signature, { docsPath });
+    throw new AbiEventSignatureNotFoundError(signature, { docsPath: docsPath2 });
   const { name, inputs } = abiItem;
   const isUnnamed = inputs?.some((x) => !(("name" in x) && x.name));
   const args = isUnnamed ? [] : {};
@@ -17228,12 +18234,24 @@ function decodeTopic({ param, value: value2 }) {
   const decodedArg = decodeAbiParameters([param], value2) || [];
   return decodedArg[0];
 }
+init_abis();
+init_decodeAbiParameters();
+init_decodeFunctionResult();
+init_encodeAbiParameters();
+init_encodeFunctionData();
 init_toBytes();
 init_keccak256();
 var REPORT_PROCESSED_ABI = parseAbi([
   "event ReportProcessed(address indexed account, uint256 callCount, address[] touchedTokens, bool isSweepable, uint8 mode)"
 ]);
 var REPORT_PROCESSED_TOPIC = keccak256(toBytes("ReportProcessed(address,uint256,address[],bool,uint8)"));
+var MULTICALL3_ABI = parseAbi([
+  "function aggregate3((address target,bool allowFailure,bytes callData)[] calls) payable returns ((bool success, bytes returnData)[] returnData)"
+]);
+var EVENT_REPORT_MAGIC = keccak256(toBytes("KONDOR_EVENT_REPORT_V1"));
+var MULTICALL3 = "0xcA11bde05977b3631167028862bE2a173976CA11";
+var ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+var REPORT_GAS_LIMIT = "5000000";
 function decodeReportProcessed(log) {
   if (log.topics.length === 0) {
     throw new Error("ReportProcessed log missing topics");
@@ -17244,7 +18262,99 @@ function decodeReportProcessed(log) {
     data: bytesToHex(log.data)
   });
 }
-var onReportProcessed = (runtime2, log) => {
+function dedupeAddresses(addresses) {
+  const seen = new Set;
+  const unique = [];
+  for (const address of addresses) {
+    const normalized = address.toLowerCase();
+    if (seen.has(normalized))
+      continue;
+    seen.add(normalized);
+    unique.push(address);
+  }
+  return unique;
+}
+function createEventReportPayload(account, touchedTokens, targets, values, calldatas) {
+  return encodeAbiParameters(parseAbiParameters("bytes32 magic,address account,address[] targets,uint256[] values,bytes[] calldatas,address[] touchedTokens"), [EVENT_REPORT_MAGIC, account, targets, values, calldatas, touchedTokens]);
+}
+function normalizeBalance(balanceHex) {
+  return decodeAbiParameters(parseAbiParameters("uint256 balance"), balanceHex)[0];
+}
+function buildMulticallData(account, tokens) {
+  return encodeFunctionData({
+    abi: MULTICALL3_ABI,
+    functionName: "aggregate3",
+    args: [
+      tokens.map((token) => ({
+        target: token,
+        allowFailure: true,
+        callData: encodeFunctionData({
+          abi: erc20Abi,
+          functionName: "balanceOf",
+          args: [account]
+        })
+      }))
+    ]
+  });
+}
+async function fetchTouchedTokenBalances(runtime2, evmClient, account, touchedTokens) {
+  if (touchedTokens.length === 0)
+    return [];
+  const multicallData = buildMulticallData(account, touchedTokens);
+  const reply = evmClient.callContract(runtime2, {
+    call: {
+      from: hexToBase64(ZERO_ADDRESS),
+      to: hexToBase64(MULTICALL3),
+      data: hexToBase64(multicallData)
+    }
+  }).result();
+  const results = decodeFunctionResult({
+    abi: MULTICALL3_ABI,
+    functionName: "aggregate3",
+    data: bytesToHex(reply.data)
+  });
+  return touchedTokens.map((token, index) => {
+    const result = results[index];
+    if (!result.success) {
+      return { token, balance: 0n };
+    }
+    return {
+      token,
+      balance: normalizeBalance(result.returnData)
+    };
+  });
+}
+var apiPost = (url, body, label) => (sendRequester) => {
+  const resp = sendRequester.sendRequest({
+    url,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: new TextEncoder().encode(JSON.stringify(body))
+  }).result();
+  if (!ok(resp)) {
+    throw new Error(`${label} failed: ${resp.statusCode} - ${text(resp)}`);
+  }
+  return text(resp);
+};
+async function buildShieldBatchCalls(runtime2, balances) {
+  const httpClient = new ClientCapability2;
+  const responseBody = httpClient.sendRequest(runtime2, apiPost(`${runtime2.config.serverUrl}/railgun/shield-calls`, {
+    balances: balances.map(({ token, balance }) => ({
+      token,
+      balance: balance.toString()
+    }))
+  }, "railgun shield-calls"), consensusIdenticalAggregation())().result();
+  const parsed = JSON.parse(responseBody);
+  if (!parsed.ok || !parsed.targets || !parsed.values || !parsed.calldatas) {
+    throw new Error(parsed.error ?? "Invalid railgun shield-calls response");
+  }
+  return {
+    targets: parsed.targets,
+    values: parsed.values.map((value2) => BigInt(value2)),
+    calldatas: parsed.calldatas
+  };
+}
+var onReportProcessed = async (runtime2, log) => {
   const decoded = decodeReportProcessed(log);
   if (decoded.eventName !== "ReportProcessed") {
     throw new Error(`Unexpected event: ${decoded.eventName}`);
@@ -17252,19 +18362,76 @@ var onReportProcessed = (runtime2, log) => {
   const { account, callCount, touchedTokens, isSweepable, mode } = decoded.args;
   const txHash = bytesToHex(log.txHash);
   const emitter = bytesToHex(log.address);
+  const network282 = getNetwork({
+    chainFamily: "evm",
+    chainSelectorName: runtime2.config.chainSelectorName
+  });
+  if (!network282) {
+    throw new Error(`Unknown chain: ${runtime2.config.chainSelectorName}`);
+  }
+  const evmClient = new ClientCapability(network282.chainSelector.selector);
   runtime2.log(`ReportProcessed detected from ${emitter}`);
   runtime2.log(`account=${account}, touchedTokens=${touchedTokens.length}, txHash=${txHash}`);
+  if (log.removed) {
+    return JSON.stringify({ ok: true, skipped: true, reason: "removed-log", txHash });
+  }
+  if (!isSweepable) {
+    return JSON.stringify({ ok: true, skipped: true, reason: "not-sweepable", txHash, account });
+  }
+  if (Number(mode) !== 0) {
+    return JSON.stringify({
+      ok: true,
+      skipped: true,
+      reason: "non-railgun-mode",
+      txHash,
+      account,
+      mode: Number(mode)
+    });
+  }
+  const uniqueTouchedTokens = dedupeAddresses(touchedTokens);
+  const balances = await fetchTouchedTokenBalances(runtime2, evmClient, account, uniqueTouchedTokens);
+  const positiveBalances = balances.filter(({ balance }) => balance > 0n);
+  if (positiveBalances.length === 0) {
+    return JSON.stringify({
+      ok: true,
+      skipped: true,
+      reason: "no-positive-balances",
+      account,
+      touchedTokens: uniqueTouchedTokens,
+      txHash
+    });
+  }
+  const batch = await buildShieldBatchCalls(runtime2, positiveBalances);
+  const reportPayload = createEventReportPayload(account, positiveBalances.map(({ token }) => token), batch.targets, batch.values, batch.calldatas);
+  const reportResponse = runtime2.report({
+    encodedPayload: hexToBase64(reportPayload),
+    encoderName: "evm",
+    signingAlgo: "ecdsa",
+    hashingAlgo: "keccak256"
+  }).result();
+  const writeResult = evmClient.writeReport(runtime2, {
+    receiver: runtime2.config.registryAddress,
+    report: reportResponse,
+    gasConfig: { gasLimit: REPORT_GAS_LIMIT }
+  }).result();
   return JSON.stringify({
     ok: true,
     eventName: decoded.eventName,
     emitter,
     account,
-    touchedTokens,
+    touchedTokens: uniqueTouchedTokens,
     callCount: callCount.toString(),
     isSweepable,
     mode: Number(mode),
     txHash,
-    removed: log.removed
+    removed: log.removed,
+    shieldedTokens: positiveBalances.map(({ token, balance }) => ({
+      token,
+      balance: balance.toString()
+    })),
+    batchCallCount: batch.targets.length,
+    writeReportStatus: writeResult.txStatus,
+    writeReportTxHash: writeResult.txStatus === TxStatus.SUCCESS ? bytesToHex(writeResult.txHash ?? new Uint8Array(32)) : undefined
   });
 };
 var initWorkflow = (config) => {
