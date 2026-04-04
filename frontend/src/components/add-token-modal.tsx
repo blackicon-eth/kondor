@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { TokenIcon } from "@web3icons/react/dynamic";
+import { TokenIcon } from "@/components/token-icon";
 import {
   Dialog,
   DialogContent,
@@ -51,7 +51,7 @@ export default function AddTokenModal({
               }}
               className="flex items-center gap-3 px-4 py-3 bg-surface-container-high border border-outline-variant/15 hover:border-primary-container/40 hover:bg-surface-container-highest transition-all cursor-pointer group"
             >
-              <TokenIcon symbol={token.symbol} variant="branded" size={40} />
+              <TokenIcon symbol={token.symbol} size={40} />
               <div className="text-left">
                 <div className="font-headline font-bold text-sm text-on-surface group-hover:text-primary-container transition-colors">
                   {token.symbol}

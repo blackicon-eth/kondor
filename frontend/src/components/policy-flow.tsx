@@ -27,7 +27,7 @@ import {
   Loader2,
   Trash2,
 } from "lucide-react";
-import { TokenIcon } from "@web3icons/react/dynamic";
+import { TokenIcon } from "@/components/token-icon";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -106,7 +106,7 @@ function TokenSourceNode({ data }: NodeProps) {
     <div className="relative">
       <NodeShell label="SOURCE" sublabel="TRIGGER" accent glowing>
         <div className="flex items-center gap-3 min-w-[200px]">
-          <TokenIcon symbol={config.sourceToken} variant="branded" size={48} />
+          <TokenIcon symbol={config.sourceToken} size={48} />
           <div>
             <div className="font-headline font-bold text-on-surface text-lg tracking-tight">
               {config.sourceToken}

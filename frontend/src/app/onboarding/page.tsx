@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion } from "motion/react";
 import { toast } from "sonner";
 import { usePrivy } from "@privy-io/react-auth";
 import ky from "ky";

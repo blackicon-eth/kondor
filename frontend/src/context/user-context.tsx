@@ -5,7 +5,7 @@ import { usePrivy } from "@privy-io/react-auth";
 import { useWallets } from "@privy-io/react-auth";
 import ky from "ky";
 import { decryptPolicy, ENCRYPTION_SIGN_MESSAGE } from "@/lib/policies/encrypt";
-import type { PolicyJson, PolicyToken } from "@/lib/policies/utils";
+import type { PolicyJson } from "@/lib/policies/utils";
 
 type User = {
   seedAddress: string;
@@ -131,7 +131,9 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   // If not authenticated, loading is done after user fetch (no signature needed)
   useEffect(() => {
     if (ready && !authenticated) {
-      setLoading(false);
+      setTimeout(() => {
+        setLoading(false);
+      }, 0);
     }
   }, [ready, authenticated]);
 
@@ -141,7 +143,8 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     userZkAddress: string | null;
     userForwardTo: string | null;
   }>(() => {
-    if (!user || !cachedSignature) return { userPolicies: null, userZkAddress: null, userForwardTo: null };
+    if (!user || !cachedSignature)
+      return { userPolicies: null, userZkAddress: null, userForwardTo: null };
 
     try {
       const textRecords = JSON.parse(user.textRecords || "{}");

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { motion } from "framer-motion";
+import { motion } from "motion/react";
 import { toast } from "sonner";
 import { useUser } from "@/context/user-context";
 import { usePrivy } from "@privy-io/react-auth";
@@ -38,10 +38,12 @@ const fadeUp = {
 };
 
 export default function Profile() {
-  const { userZkAddress, refetch } = useUser();
+  const { user, userZkAddress, userForwardTo, refetch } = useUser();
   const { user: privyUser, getAccessToken } = usePrivy();
   const [zkAddress, setZkAddress] = useState(userZkAddress ?? "");
-  const [updating, setUpdating] = useState(false);
+  const [destinationWallet, setDestinationWallet] = useState(userForwardTo ?? "");
+  const [updatingZkAddress, setUpdatingZkAddress] = useState(false);
+  const [updatingDestinationWallet, setUpdatingDestinationWallet] = useState(false);
 
   const seedAddress = privyUser?.linkedAccounts.find(
     (a) => a.type === "wallet" && a.walletClientType === "privy"
@@ -61,7 +63,7 @@ export default function Profile() {
       toast.error("Wallet not available");
       return;
     }
-    setUpdating(true);
+    setUpdatingZkAddress(true);
     try {
       const token = await getAccessToken();
       await ky.put("/api/user/text-records", {
@@ -77,7 +79,49 @@ export default function Profile() {
       console.error("[TEST] Failed to update zkAddress:", e);
       toast.error("Failed to update zkAddress");
     } finally {
-      setUpdating(false);
+      setUpdatingZkAddress(false);
+    }
+  }
+
+  async function handleUpdateDestinationWallet() {
+    const trimmed = destinationWallet.trim();
+    if (!trimmed) {
+      toast.error("Please enter a valid wallet address");
+      return;
+    }
+    if (!seedAddress || !("address" in seedAddress)) {
+      toast.error("Wallet not available");
+      return;
+    }
+    setUpdatingDestinationWallet(true);
+    try {
+      // Read the existing kondor-policy, update forwardTo, write it back
+      const textRecords = JSON.parse(user?.textRecords || "{}");
+      const policyStr = textRecords["kondor-policy"];
+      if (!policyStr) {
+        toast.error("No existing policy found");
+        setUpdatingDestinationWallet(false);
+        return;
+      }
+
+      const policy = JSON.parse(policyStr);
+      policy.forwardTo = trimmed;
+
+      const token = await getAccessToken();
+      await ky.put("/api/user/text-records", {
+        json: { textRecords: { "kondor-policy": JSON.stringify(policy) } },
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "x-seed-address": seedAddress.address,
+        },
+      });
+      await refetch();
+      toast.success("Destination wallet updated successfully");
+    } catch (e) {
+      console.error("[TEST] Failed to update destination wallet:", e);
+      toast.error("Failed to update destination wallet");
+    } finally {
+      setUpdatingDestinationWallet(false);
     }
   }
 
@@ -130,17 +174,17 @@ export default function Profile() {
                       type="text"
                       value={zkAddress}
                       onChange={(e) => setZkAddress(e.target.value)}
-                      placeholder="0zk1a2b3c4d...your railgun address"
+                      placeholder="0zk1a2b3c4d..."
                       className="w-full bg-transparent font-label text-sm text-on-surface tracking-wider placeholder:text-secondary-container focus:outline-none"
                     />
                   </div>
                   <button
                     onClick={handleUpdateZkAddress}
-                    disabled={updating || !zkAddress.trim()}
+                    disabled={updatingZkAddress || !zkAddress.trim()}
                     className="flex items-center justify-center gap-2 bg-primary-container text-on-primary-container px-4 py-3.5 font-headline font-bold uppercase text-[11px] tracking-widest hover:bg-white hover:text-surface transition-all cursor-pointer shrink-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-primary-container disabled:hover:text-on-primary-container"
                   >
                     Update
-                    {updating ? (
+                    {updatingZkAddress ? (
                       <Loader2 className="size-3.5 animate-spin" />
                     ) : (
                       <RotateCcw className="size-3.5" />
@@ -164,19 +208,19 @@ export default function Profile() {
                     <Lock className="size-4 text-secondary-container shrink-0" />
                     <input
                       type="text"
-                      value={zkAddress}
-                      onChange={(e) => setZkAddress(e.target.value)}
-                      placeholder="0zk1a2b3c4d...your railgun address"
+                      value={destinationWallet}
+                      onChange={(e) => setDestinationWallet(e.target.value)}
+                      placeholder="0x1a2b3c4d..."
                       className="w-full bg-transparent font-label text-sm text-on-surface tracking-wider placeholder:text-secondary-container focus:outline-none"
                     />
                   </div>
                   <button
-                    onClick={handleUpdateZkAddress}
-                    disabled={updating || !zkAddress.trim()}
+                    onClick={handleUpdateDestinationWallet}
+                    disabled={updatingDestinationWallet || !destinationWallet.trim()}
                     className="flex items-center justify-center gap-2 bg-primary-container text-on-primary-container px-4 py-3.5 font-headline font-bold uppercase text-[11px] tracking-widest hover:bg-white hover:text-surface transition-all cursor-pointer shrink-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-primary-container disabled:hover:text-on-primary-container"
                   >
                     Update
-                    {updating ? (
+                    {updatingDestinationWallet ? (
                       <Loader2 className="size-3.5 animate-spin" />
                     ) : (
                       <RotateCcw className="size-3.5" />

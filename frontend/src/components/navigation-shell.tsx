@@ -5,7 +5,7 @@ import { useEffect } from "react";
 import { useUser } from "@/context/user-context";
 import { Loader2 } from "lucide-react";
 import { usePrivy } from "@privy-io/react-auth";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion } from "motion/react";
 import Navbar from "@/components/navbar";
 import Footer from "@/components/footer";
 import { FrozenRouter } from "@/components/frozen-router";

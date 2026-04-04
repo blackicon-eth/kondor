@@ -227,13 +227,13 @@ export function buildTextRecord(
 
 export function buildPolicy(
   config: FlowConfig,
-  existingTokens: PolicyToken[] = []
+  existingTokens: PolicyToken[] = [],
 ): PolicyJson {
   return {
     destinationChain: "ethereum-sepolia",
     isRailgun: config.privateMode,
     isOfframp: false,
-    forwardTo: config.privateMode ? config.railgunWallet : config.destinationWallet,
+    forwardTo: config.destinationWallet,
     tokens: upsertPolicyToken(existingTokens, config),
   };
 }

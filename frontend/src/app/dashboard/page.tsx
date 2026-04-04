@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { motion } from "framer-motion";
+import { motion } from "motion/react";
 import { Plus, Layers } from "lucide-react";
 import AddTokenModal from "@/components/add-token-modal";
 import { useUser } from "@/context/user-context";

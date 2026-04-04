@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion } from "motion/react";
 import { Plus } from "lucide-react";
 import PolicyFlow from "@/components/policy-flow";
 import AddTokenModal from "@/components/add-token-modal";
@@ -42,13 +42,12 @@ export default function DashboardToken() {
   const existingTokens = userPolicies?.tokens.map((t) => t.inputToken) ?? [];
   const allTokensHavePolicies = SUPPORTED_TOKENS.every((t) => existingTokens.includes(t));
 
-  const activeToken = existingTokens.includes(selectedToken)
-    ? selectedToken
-    : (existingTokens[0] ?? "");
+  // Trust selectedToken directly — the Select only shows valid tokens,
+  // so no need to validate against a potentially-stale existingTokens array.
+  const activeToken = selectedToken || (existingTokens[0] ?? "");
 
-  function handleTokenChange(token: string) {
-    setSelectedToken(token);
-    window.history.replaceState(null, "", `/dashboard/${token}`);
+  function handleTokenChange(newToken: string) {
+    setSelectedToken(newToken);
   }
 
   function handlePolicyUpdate() {
@@ -59,7 +58,6 @@ export default function DashboardToken() {
     const remaining = existingTokens.filter((t) => t !== activeToken);
     if (remaining.length > 0) {
       setSelectedToken(remaining[0]);
-      window.history.replaceState(null, "", `/dashboard/${remaining[0]}`);
     } else {
       router.push("/dashboard");
     }

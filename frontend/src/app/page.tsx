@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { motion } from "framer-motion";
+import { motion } from "motion/react";
 import { ChevronRight } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { usePrivy, useLogin } from "@privy-io/react-auth";

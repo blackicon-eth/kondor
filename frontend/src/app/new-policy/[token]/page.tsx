@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { motion } from "framer-motion";
+import { motion } from "motion/react";
 import PolicyFlow from "@/components/policy-flow";
 import { useUser } from "@/context/user-context";
 import { toast } from "sonner";
