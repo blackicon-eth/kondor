@@ -69,7 +69,7 @@ contract KondorOffchainResolver {
     function resolve(bytes calldata name, bytes calldata data)
         external
         view
-        retuKondor (bytes memory)
+        returns (bytes memory)
     {
         bytes memory callData = abi.encodeWithSelector(
             this.resolve.selector,
@@ -92,7 +92,7 @@ contract KondorOffchainResolver {
     // ── CCIP-Read callback ───────────────────────────────────────────────
     /**
      * @dev Called by the client after fetching data from the gateway.
-     *      Verifies the signer's signature and retuKondor the result.
+     *      Verifies the signer's signature and returns the result.
      *
      * response = abi.encode(bytes result, uint64 expires, bytes sig)
      * extraData = original callData (same as what the gateway received)
@@ -100,7 +100,7 @@ contract KondorOffchainResolver {
     function resolveWithProof(bytes calldata response, bytes calldata extraData)
         external
         view
-        retuKondor (bytes memory)
+        returns (bytes memory)
     {
         (bytes memory result, uint64 expires, bytes memory sig) = abi.decode(
             response,
@@ -130,7 +130,7 @@ contract KondorOffchainResolver {
     }
 
     // ── EIP-165 ──────────────────────────────────────────────────────────
-    function supportsInterface(bytes4 interfaceId) external pure retuKondor (bool) {
+    function supportsInterface(bytes4 interfaceId) external pure returns (bool) {
         return
             interfaceId == EXTENDED_RESOLVER_INTERFACE ||
             interfaceId == EIP165_INTERFACE;
@@ -140,7 +140,7 @@ contract KondorOffchainResolver {
     function _recover(bytes32 hash, bytes memory sig)
         internal
         pure
-        retuKondor (address)
+        returns (address)
     {
         require(sig.length == 65, "Bad sig length");
 

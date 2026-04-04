@@ -23,6 +23,7 @@ function runCre(httpPayloadPath: string): Promise<CreResult> {
         "workflow",
         "simulate",
         "handler",
+        "--broadcast",
         "--non-interactive",
         "--trigger-index",
         "0",

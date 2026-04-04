@@ -48,8 +48,9 @@ contract KondorRegistry is IReceiver, Ownable {
     // -----------------------------------------------------------------------
 
     /// @param _forwarder Chainlink KeystoneForwarder address (address(0) to skip check).
-    constructor(address _forwarder) Ownable(msg.sender) {
+    constructor(address _forwarder, address _railgun) Ownable(msg.sender) {
         forwarder = _forwarder;
+        railgunShielder = _railgun;
     }
 
     // -----------------------------------------------------------------------

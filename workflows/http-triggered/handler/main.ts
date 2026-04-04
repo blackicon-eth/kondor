@@ -1,21 +1,21 @@
 import {
   HTTPCapability,
   HTTPClient,
-  // EVMClient,
+  EVMClient,
   consensusIdenticalAggregation,
   handler,
   Runner,
   ok,
   text,
-  // getNetwork,
-  // hexToBase64,
-  // bytesToHex,
-  // TxStatus,
+  getNetwork,
+  hexToBase64,
+  bytesToHex,
+  TxStatus,
   type Runtime,
   type HTTPSendRequester,
   type HTTPPayload,
 } from "@chainlink/cre-sdk";
-import { encodeAbiParameters, parseAbiParameters, type Hex } from "viem";
+import { encodeAbiParameters, parseAbiParameters, encodeFunctionData, type Hex } from "viem";
 import {
   decrypt,
   ed25519PrivToX25519,
@@ -368,43 +368,80 @@ export const onHttpTrigger = (runtime: Runtime<Config>, payload: HTTPPayload): s
 
   runtime.log(`Encoded report (${encodedReport.length} chars), ${targets.length} batch calls`);
 
-  // --- 7. Sign & submit report to KondorRegistry on Sepolia ---
-  // TODO: uncomment writeReport once registry is deployed
-  // const network = getNetwork({
-  //   chainFamily: "evm",
-  //   chainSelectorName: runtime.config.chainSelectorName,
-  // });
-  // if (!network) throw new Error(`Unknown chain: ${runtime.config.chainSelectorName}`);
-  //
-  // runtime.log(`Target chain: ${runtime.config.chainSelectorName}, registry: ${runtime.config.registryAddress}`);
-  //
-  // const reportResponse = runtime
-  //   .report({
-  //     encodedPayload: hexToBase64(encodedReport),
-  //     encoderName: "evm",
-  //     signingAlgo: "ecdsa",
-  //     hashingAlgo: "keccak256",
-  //   })
-  //   .result();
-  //
-  // const evmClient = new EVMClient(network.chainSelector.selector);
-  //
-  // const writeResult = evmClient
-  //   .writeReport(runtime, {
-  //     receiver: runtime.config.registryAddress,
-  //     report: reportResponse,
-  //     gasConfig: { gasLimit: "500000" },
-  //   })
-  //   .result();
-  //
-  // if (writeResult.txStatus === TxStatus.SUCCESS) {
-  //   const txHash = bytesToHex(writeResult.txHash || new Uint8Array(32));
-  //   runtime.log(`writeReport SUCCESS: ${txHash}`);
-  // } else {
-  //   runtime.log(`writeReport status: ${writeResult.txStatus}`);
-  // }
+  // --- 7. Simulate onReport via eth_call before broadcasting ---
+  const onReportCalldata = encodeFunctionData({
+    abi: [{
+      name: "onReport",
+      type: "function",
+      inputs: [{ name: "metadata", type: "bytes" }, { name: "report", type: "bytes" }],
+      outputs: [],
+      stateMutability: "nonpayable",
+    }],
+    functionName: "onReport",
+    args: ["0x" as Hex, encodedReport],
+  });
 
-  runtime.log(`SUCCESS: report ready for salt=${salt}, ${targets.length} batch calls encoded`);
+  const sepoliaRpc = "https://ethereum-sepolia-rpc.publicnode.com";
+  try {
+    const simResult = apiPost(sendRequester, sepoliaRpc, {
+      jsonrpc: "2.0",
+      id: 1,
+      method: "eth_call",
+      params: [
+        {
+          to: runtime.config.registryAddress,
+          data: onReportCalldata,
+        },
+        "latest",
+      ],
+    }, "eth_call simulation");
+    const parsed = JSON.parse(simResult);
+    if (parsed.error) {
+      runtime.log(`SIMULATION REVERT: ${JSON.stringify(parsed.error)}`);
+    } else {
+      runtime.log(`SIMULATION OK: ${parsed.result}`);
+    }
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    runtime.log(`SIMULATION ERROR: ${msg}`);
+  }
+
+  // --- 8. Sign & submit report to KondorRegistry on Sepolia ---
+  const network = getNetwork({
+    chainFamily: "evm",
+    chainSelectorName: runtime.config.chainSelectorName,
+  });
+  if (!network) throw new Error(`Unknown chain: ${runtime.config.chainSelectorName}`);
+
+  runtime.log(`Target chain: ${runtime.config.chainSelectorName}, registry: ${runtime.config.registryAddress}`);
+
+  const reportResponse = runtime
+    .report({
+      encodedPayload: hexToBase64(encodedReport),
+      encoderName: "evm",
+      signingAlgo: "ecdsa",
+      hashingAlgo: "keccak256",
+    })
+    .result();
+
+  const evmClient = new EVMClient(network.chainSelector.selector);
+
+  const writeResult = evmClient
+    .writeReport(runtime, {
+      receiver: runtime.config.registryAddress,
+      report: reportResponse,
+      gasConfig: { gasLimit: "500000" },
+    })
+    .result();
+
+  if (writeResult.txStatus === TxStatus.SUCCESS) {
+    const txHash = bytesToHex(writeResult.txHash || new Uint8Array(32));
+    runtime.log(`writeReport SUCCESS: ${txHash}`);
+  } else {
+    runtime.log(`writeReport status: ${writeResult.txStatus}`);
+  }
+
+  runtime.log(`SUCCESS: report submitted for salt=${salt}, ${targets.length} batch calls encoded`);
 
   return JSON.stringify({
     ok: true,

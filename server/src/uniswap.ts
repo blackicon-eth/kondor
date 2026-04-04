@@ -156,7 +156,10 @@ export async function createBatchSwap5792(
     "x-permit2-disabled": "true",
   };
 
-  const swapHeaders = buildHeaders(apiKey, { routerVersion: body.universalRouterVersion });
+  const swapHeaders = {
+    ...buildHeaders(apiKey, { routerVersion: body.universalRouterVersion }),
+    "x-permit2-disabled": "true",
+  };
   const includeApprovalCalls = body.includeApprovalCalls ?? true;
   const executeBatchMethod: "batchExecute" = body.executeBatchMethod ?? "batchExecute";
 

@@ -2,7 +2,7 @@
 pragma solidity ^0.8.28;
 
 import "forge-std/Script.sol";
-import "../src/RnsOffchainResolver.sol";
+import "../src/KondorOffchainResolver.sol";
 
 contract DeployOffchainResolver is Script {
     function run() external {
@@ -12,14 +12,14 @@ contract DeployOffchainResolver is Script {
 
         vm.startBroadcast();
 
-        RnsOffchainResolver resolver = new RnsOffchainResolver(
+        KondorOffchainResolver resolver = new KondorOffchainResolver(
             gatewayUrl,
             signerAddr
         );
 
         vm.stopBroadcast();
 
-        console.log("RnsOffchainResolver deployed at:", address(resolver));
+        console.log("KondorOffchainResolver deployed at:", address(resolver));
         console.log("  Gateway URL:", gatewayUrl);
         console.log("  Signer:", signerAddr);
     }

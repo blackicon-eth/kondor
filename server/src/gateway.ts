@@ -1,21 +1,33 @@
 import { Request, Response } from "express";
 import {
+  createPublicClient,
   decodeFunctionData,
   encodeAbiParameters,
   encodeFunctionResult,
   encodePacked,
   getAddress,
+  http,
   keccak256,
   type Hex,
 } from "viem";
+import { sepolia } from "viem/chains";
 import { privateKeyToAccount } from "viem/accounts";
 import { eq, isNotNull } from "drizzle-orm";
 import { getDb } from "./db.js";
 import { config } from "./config";
 import { stealthAddresses, users } from "../../shared/db/db.schema.js";
 
-const STALE_STEALTH_WINDOW_MS = 20 * 60 * 1000;
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+
+const REGISTRY_ABI = [
+  {
+    name: "predictAddress",
+    type: "function",
+    inputs: [{ name: "salt", type: "bytes32" }],
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+  },
+] as const;
 
 type GatewayDeps = {
   onStealthAddressGenerated?: (address: string, subdomainName: string) => Promise<void>;
@@ -100,9 +112,24 @@ function deriveHash(seedAddress: string, queryNonce: number): Hex {
   return keccak256(encodePacked(["address", "uint256"], [seedAddress as Hex, BigInt(queryNonce)]));
 }
 
-function deriveStealthAddress(seedAddress: string, queryNonce: number): `0x${string}` {
-  const hash = deriveHash(seedAddress, queryNonce);
-  return getAddress(`0x${hash.slice(-40)}` as Hex) as `0x${string}`;
+async function deriveStealthAddress(seedAddress: string, queryNonce: number): Promise<`0x${string}`> {
+  const salt = deriveHash(seedAddress, queryNonce);
+  const registryAddress = process.env.KONDOR_REGISTRY_ADDRESS as Hex | undefined;
+  if (!registryAddress) throw new Error("KONDOR_REGISTRY_ADDRESS not set");
+
+  const client = createPublicClient({
+    chain: sepolia,
+    transport: http("https://ethereum-sepolia-rpc.publicnode.com"),
+  });
+
+  const predicted = await client.readContract({
+    address: registryAddress,
+    abi: REGISTRY_ABI,
+    functionName: "predictAddress",
+    args: [salt],
+  });
+
+  return getAddress(predicted) as `0x${string}`;
 }
 
 async function resolveStealthAddress(subdomainName: string): Promise<`0x${string}` | null> {
@@ -116,7 +143,7 @@ async function resolveStealthAddress(subdomainName: string): Promise<`0x${string
 
   const nextNonce = Number(user.queryNonce ?? 0) + 1;
   const hash = deriveHash(user.seedAddress, nextNonce);
-  const stealthAddress = deriveStealthAddress(user.seedAddress, nextNonce);
+  const stealthAddress = await deriveStealthAddress(user.seedAddress, nextNonce);
   const stealthAddressLower = stealthAddress.toLowerCase();
 
   await getDb()
@@ -384,20 +411,6 @@ export async function markStealthAddressTriggered(address: string): Promise<void
       lastTriggeredAt: new Date(),
     })
     .where(eq(stealthAddresses.address, normalized));
-}
-
-export async function pruneStaleStealthAddresses(): Promise<number> {
-  const cutoff = Date.now() - STALE_STEALTH_WINDOW_MS;
-  const rows = await getDb().select().from(stealthAddresses);
-  let removed = 0;
-  for (const row of rows) {
-    const createdAtMs = row.createdAt?.getTime() ?? 0;
-    const triggeredAtMs = row.lastTriggeredAt?.getTime() ?? 0;
-    if (createdAtMs >= cutoff || triggeredAtMs >= cutoff) continue;
-    await getDb().delete(stealthAddresses).where(eq(stealthAddresses.address, row.address));
-    removed += 1;
-  }
-  return removed;
 }
 
 export async function updateSubdomainTextRecords(
