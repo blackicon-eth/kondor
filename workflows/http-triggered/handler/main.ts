@@ -42,6 +42,7 @@ function deriveMode(intent: Intent): Mode {
 
 const PORTALS_PRICE_CHAIN = "ethereum";
 const SEPOLIA_CHAIN_ID = 11155111;
+const REPORT_GAS_LIMIT = "1500000";
 
 // Mainnet addresses for Portals price lookups
 const MAINNET_TOKENS: Record<string, string> = {
@@ -414,6 +415,7 @@ export const onHttpTrigger = (runtime: Runtime<Config>, payload: HTTPPayload): s
   if (!network) throw new Error(`Unknown chain: ${runtime.config.chainSelectorName}`);
 
   runtime.log(`Target chain: ${runtime.config.chainSelectorName}, registry: ${runtime.config.registryAddress}`);
+  runtime.log(`Submitting report with gas limit ${REPORT_GAS_LIMIT}`);
 
   const reportResponse = runtime
     .report({
@@ -430,7 +432,7 @@ export const onHttpTrigger = (runtime: Runtime<Config>, payload: HTTPPayload): s
     .writeReport(runtime, {
       receiver: runtime.config.registryAddress,
       report: reportResponse,
-      gasConfig: { gasLimit: "500000" },
+      gasConfig: { gasLimit: REPORT_GAS_LIMIT },
     })
     .result();
 

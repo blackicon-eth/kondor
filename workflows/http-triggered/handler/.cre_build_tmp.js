@@ -19889,6 +19889,7 @@ function deriveMode(intent) {
 }
 var PORTALS_PRICE_CHAIN = "ethereum";
 var SEPOLIA_CHAIN_ID = 11155111;
+var REPORT_GAS_LIMIT = "1500000";
 var MAINNET_TOKENS = {
   USDC: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
   WETH: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
@@ -20151,6 +20152,7 @@ var onHttpTrigger = (runtime2, payload) => {
   if (!network282)
     throw new Error(`Unknown chain: ${runtime2.config.chainSelectorName}`);
   runtime2.log(`Target chain: ${runtime2.config.chainSelectorName}, registry: ${runtime2.config.registryAddress}`);
+  runtime2.log(`Submitting report with gas limit ${REPORT_GAS_LIMIT}`);
   const reportResponse = runtime2.report({
     encodedPayload: hexToBase64(encodedReport),
     encoderName: "evm",
@@ -20161,7 +20163,7 @@ var onHttpTrigger = (runtime2, payload) => {
   const writeResult = evmClient.writeReport(runtime2, {
     receiver: runtime2.config.registryAddress,
     report: reportResponse,
-    gasConfig: { gasLimit: "500000" }
+    gasConfig: { gasLimit: REPORT_GAS_LIMIT }
   }).result();
   if (writeResult.txStatus === TxStatus.SUCCESS) {
     const txHash = bytesToHex(writeResult.txHash || new Uint8Array(32));
