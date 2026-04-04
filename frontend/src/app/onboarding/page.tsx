@@ -6,13 +6,8 @@ import { toast } from "sonner";
 import { usePrivy } from "@privy-io/react-auth";
 import ky from "ky";
 import { useUser } from "@/context/user-context";
-import {
-  Fingerprint,
-  Shield,
-  AtSign,
-  ArrowRight,
-  Loader2,
-} from "lucide-react";
+import { Fingerprint, Shield, AtSign, ArrowRight, Loader2 } from "lucide-react";
+import PolicyFlow from "@/components/policy-flow";
 
 const steps = [
   { id: "identity", label: "Identity", icon: Fingerprint },
@@ -37,13 +32,15 @@ export default function Onboarding() {
     setRegistering(true);
     try {
       const token = await getAccessToken();
-      await ky.post("/api/user/ens", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "x-seed-address": wallet.address,
-        },
-        json: { ensSubdomain: subdomain.trim() },
-      }).json();
+      await ky
+        .post("/api/user/ens", {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "x-seed-address": wallet.address,
+          },
+          json: { ensSubdomain: subdomain.trim() },
+        })
+        .json();
       await refetch();
       await new Promise((r) => setTimeout(r, 2000));
       toast.success(`${subdomain.trim()}.kondor.eth registered!`);
@@ -51,7 +48,7 @@ export default function Onboarding() {
     } catch (e) {
       const err = e as { response?: Response };
       if (err.response) {
-        const body = await err.response.json() as { error?: string };
+        const body = (await err.response.json()) as { error?: string };
         toast.error(body.error ?? "Registration failed");
       } else {
         toast.error("Registration failed");
@@ -62,7 +59,7 @@ export default function Onboarding() {
   }
 
   return (
-    <div className="flex grow overflow-hidden gap-24">
+    <div className="flex overflow-hidden gap-24 w-full h-full">
       {/* Sidebar */}
       <aside className="hidden md:flex w-64 shrink-0 bg-surface flex-col py-8 space-y-6">
         <div className="px-8 mb-4">
@@ -81,10 +78,11 @@ export default function Onboarding() {
             return (
               <div
                 key={step.id}
-                className={`flex items-center gap-3 py-3 font-label font-medium uppercase text-[13px] tracking-widest ${isActive
-                  ? "text-primary-container font-bold border-l-4 border-primary-container pl-4"
-                  : "text-secondary-container pl-5"
-                  }`}
+                className={`flex items-center gap-3 py-3 font-label font-medium uppercase text-[13px] tracking-widest ${
+                  isActive
+                    ? "text-primary-container font-bold border-l-4 border-primary-container pl-4"
+                    : "text-secondary-container pl-5"
+                }`}
               >
                 <Icon className={`size-6 ${isActive ? "fill-primary-container" : ""}`} />
                 {step.label}
@@ -126,8 +124,8 @@ export default function Onboarding() {
                     <span className="text-primary-container">KONDOR</span> IDENTITY
                   </h1>
                   <p className="text-secondary-ds text-lg font-body max-w-lg leading-relaxed">
-                    Your .kondor.eth domain is more than a name. It is your
-                    cryptographically secured signature across the entire Kondor ecosystem.
+                    Your .kondor.eth domain is more than a name. It is your cryptographically
+                    secured signature across the entire Kondor ecosystem.
                   </p>
                 </div>
               </div>
@@ -184,25 +182,30 @@ export default function Onboarding() {
           ) : (
             <motion.div
               key="policy"
-              className="max-w-5xl py-8 min-h-full flex flex-col"
+              className="w-full py-8 min-h-full flex flex-col"
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -20 }}
               transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
             >
-              <div className="grid grid-cols-12 gap-8 items-start mb-18">
-                <div className="col-span-12">
-                  <div
-                    className="inline-block bg-primary-container text-on-primary-container px-3 py-1 text-[10px] font-label uppercase tracking-[0.2em] mb-6"
-                    style={{ clipPath: "polygon(0 0, 100% 0, 92% 100%, 0% 100%)" }}
-                  >
-                    Step 02 / Phase Alpha
-                  </div>
-                  <h1 className="text-6xl md:text-8xl font-headline font-black text-on-surface leading-[0.9] tracking-tighter mb-8">
-                    Policy placeholder
-                  </h1>
+              <div className="mb-8">
+                <div
+                  className="inline-block bg-primary-container text-on-primary-container px-3 py-1 text-[10px] font-label uppercase tracking-[0.2em] mb-6"
+                  style={{ clipPath: "polygon(0 0, 100% 0, 92% 100%, 0% 100%)" }}
+                >
+                  Step 02 / Phase Alpha
                 </div>
+                <h1 className="text-5xl md:text-7xl font-headline font-black text-on-surface leading-[0.9] tracking-tighter mb-4">
+                  DESIGN YOUR
+                  <span className="text-primary-container">&nbsp;POLICY</span>
+                </h1>
+                <p className="text-secondary-ds text-lg font-body max-w-lg leading-relaxed">
+                  Define how incoming tokens are routed — set conditions, allocations, and
+                  destinations for your automated strategy.
+                </p>
               </div>
+
+              <PolicyFlow />
             </motion.div>
           )}
         </AnimatePresence>

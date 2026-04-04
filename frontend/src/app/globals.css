@@ -166,6 +166,32 @@
   clip-path: polygon(0 0, 100% 0, 100% 85%, 95% 100%, 0 100%);
 }
 
+/* React Flow overrides */
+.react-flow__node.selected,
+.react-flow__node:focus,
+.react-flow__node:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
+.react-flow__edge-path {
+  stroke-dasharray: 8 4;
+  animation: flowDash 1s linear infinite;
+}
+
+@keyframes flowDash {
+  to {
+    stroke-dashoffset: -12;
+  }
+}
+
+.react-flow__node {
+  transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.react-flow__edge {
+  transition: opacity 0.3s ease;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

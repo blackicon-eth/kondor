@@ -26,11 +26,11 @@ export default function Providers({ children }: { children: React.ReactNode }) {
       }}
     >
       <QueryClientProvider client={queryClient}>
-        <NavigationShell>
-          <UserProvider>
+        <UserProvider>
+          <NavigationShell>
             {children}
-          </UserProvider>
-        </NavigationShell>
+          </NavigationShell>
+        </UserProvider>
         <Toaster />
       </QueryClientProvider>
     </PrivyProvider>

@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { usePrivy } from "@privy-io/react-auth";
 import ky from "ky";
 
@@ -24,7 +24,7 @@ type UserContextType = {
 const UserContext = createContext<UserContextType>({
   user: null,
   loading: true,
-  refetch: async () => {},
+  refetch: async () => { },
 });
 
 export function UserProvider({ children }: { children: React.ReactNode }) {
@@ -32,7 +32,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  async function fetchUser() {
+  const fetchUser = useCallback(async () => {
     if (!authenticated || !privyUser) {
       setUser(null);
       setLoading(false);
@@ -65,13 +65,13 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }
+  }, [authenticated, privyUser, getAccessToken]);
 
   useEffect(() => {
     if (ready) {
       fetchUser();
     }
-  }, [ready, authenticated]);
+  }, [ready, fetchUser]);
 
   return (
     <UserContext.Provider value={{ user, loading, refetch: fetchUser }}>
