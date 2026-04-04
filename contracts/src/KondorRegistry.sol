@@ -8,7 +8,7 @@ import {SimpleAccount} from "./SimpleAccount.sol";
 /// @title RnsRegistry — Factory + router for subdomain-based smart accounts
 /// @notice Deploys SimpleAccounts via CREATE2 keyed by subdomain string.
 ///         Receives CRE reports and forwards calldata batches to the target account.
-contract RnsRegistry is IReceiver, Ownable {
+contract KondorRegistry is IReceiver, Ownable {
     // -----------------------------------------------------------------------
     // State
     // -----------------------------------------------------------------------

@@ -1,0 +1,75 @@
+{
+    "chain": "base",
+    "destinationChain": "base",
+    "inputToken": "USDC",
+    "inputAmount": 100,
+    "inputDecimals": 6,
+    "subnameString": "fernandello",
+    "sender": "0x8da91A6298eA5d1A8Bc985e99798fd0A0f05701a",
+    "conditions": [
+        {
+            "checks": [
+                {
+                    "token": "WETH",
+                    "operator": "<",
+                    "threshold": 3000
+                },
+                {
+                    "token": "WETH",
+                    "operator": ">",
+                    "threshold": 1000
+                }
+            ],
+            "actions": [
+                {
+                    "actionType": "swap",
+                    "outputToken": "WETH",
+                    "percent": 10
+                },
+                {
+                    "actionType": "supply",
+                    "outputToken": "aBasUSDC",
+                    "percent": 40
+                },
+                {
+                    "actionType": "swap",
+                    "outputToken": "LINK",
+                    "percent": 50
+                }
+            ]
+        },
+        {
+            "checks": [
+                {
+                    "token": "WETH",
+                    "operator": "<",
+                    "threshold": 2000
+                },
+                {
+                    "token": "LINK",
+                    "operator": "<",
+                    "threshold": 8
+                }
+            ],
+            "actions": [
+                {
+                    "actionType": "swap",
+                    "outputToken": "LINK",
+                    "percent": 80
+                }
+            ]
+        }
+    ],
+    "elseActions": [
+        {
+            "actionType": "supply",
+            "outputToken": "aBasWETH",
+            "percent": 90
+        },
+        {
+            "actionType": "swap",
+            "outputToken": "WETH",
+            "percent": 10
+        }
+    ]
+}

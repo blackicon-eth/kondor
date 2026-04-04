@@ -2,12 +2,12 @@
 pragma solidity ^0.8.28;
 
 /**
- * @title RnsOffchainResolver
- * @notice CCIP-Read (EIP-3668) offchain resolver for RNS subdomains.
+ * @title KondorOffchainResolver
+ * @notice CCIP-Read (EIP-3668) offchain resolver for Kondor subdomains.
  *         Supports wildcard resolution (ENSIP-10) so that any
  *         `<username>.yourdomain.eth` query is routed to the gateway.
  */
-contract RnsOffchainResolver {
+contract KondorOffchainResolver {
     // ── Storage ──────────────────────────────────────────────────────────
     string public url;        // Gateway URL template, e.g. "https://gw.example.com/gateway/{sender}/{data}.json"
     address public signer;    // Public key that signs gateway responses
@@ -69,7 +69,7 @@ contract RnsOffchainResolver {
     function resolve(bytes calldata name, bytes calldata data)
         external
         view
-        returns (bytes memory)
+        retuKondor (bytes memory)
     {
         bytes memory callData = abi.encodeWithSelector(
             this.resolve.selector,
@@ -92,7 +92,7 @@ contract RnsOffchainResolver {
     // ── CCIP-Read callback ───────────────────────────────────────────────
     /**
      * @dev Called by the client after fetching data from the gateway.
-     *      Verifies the signer's signature and returns the result.
+     *      Verifies the signer's signature and retuKondor the result.
      *
      * response = abi.encode(bytes result, uint64 expires, bytes sig)
      * extraData = original callData (same as what the gateway received)
@@ -100,7 +100,7 @@ contract RnsOffchainResolver {
     function resolveWithProof(bytes calldata response, bytes calldata extraData)
         external
         view
-        returns (bytes memory)
+        retuKondor (bytes memory)
     {
         (bytes memory result, uint64 expires, bytes memory sig) = abi.decode(
             response,
@@ -130,7 +130,7 @@ contract RnsOffchainResolver {
     }
 
     // ── EIP-165 ──────────────────────────────────────────────────────────
-    function supportsInterface(bytes4 interfaceId) external pure returns (bool) {
+    function supportsInterface(bytes4 interfaceId) external pure retuKondor (bool) {
         return
             interfaceId == EXTENDED_RESOLVER_INTERFACE ||
             interfaceId == EIP165_INTERFACE;
@@ -140,7 +140,7 @@ contract RnsOffchainResolver {
     function _recover(bytes32 hash, bytes memory sig)
         internal
         pure
-        returns (address)
+        retuKondor (address)
     {
         require(sig.length == 65, "Bad sig length");
 
