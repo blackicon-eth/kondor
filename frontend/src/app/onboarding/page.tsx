@@ -16,7 +16,6 @@ import {
   Check,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import type { PolicyJson } from "@/lib/policies/utils";
 import PolicyFlow from "@/components/policy-flow";
 
 const steps = [
@@ -33,10 +32,9 @@ export default function Onboarding() {
   const router = useRouter();
   const [currentStep, setCurrentStep] = useState(user?.ensSubdomain ? 1 : 0);
 
-  // TODO: Replace mock with actual DB write — encrypt policy and save to user's text record
-  async function handlePolicyConfirm(policy: PolicyJson) {
+  async function handlePolicyConfirm() {
     toast.success("Policy saved successfully!");
-    await new Promise((r) => setTimeout(r, 1500));
+    await new Promise((r) => setTimeout(r, 1000));
     setCurrentStep(2);
   }
 

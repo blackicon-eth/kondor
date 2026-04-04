@@ -52,7 +52,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { useUser } from "@/context/user-context";
-import { encryptPolicy, decryptPolicy, ENCRYPTION_SIGN_MESSAGE } from "@/lib/policies/encrypt";
+import { encryptPolicy, ENCRYPTION_SIGN_MESSAGE } from "@/lib/policies/encrypt";
 import { useWallets, usePrivy } from "@privy-io/react-auth";
 import ky from "ky";
 import { toast } from "sonner";
@@ -451,12 +451,8 @@ export default function PolicyFlow({
 }) {
   const { wallets } = useWallets();
   const { user: privyUser, getAccessToken } = usePrivy();
-  const { user, refetch, userPolicies, userZkAddress, userForwardTo } = useUser();
+  const { refetch, userPolicies, userZkAddress, userForwardTo } = useUser();
   const [saving, setSaving] = useState(false);
-
-  if (userPolicies) {
-    const fromPolicy = policyToFlowConfig(userPolicies, inputToken, userZkAddress, userForwardTo);
-  }
 
   const [config, setConfig] = useState<PolicyConfig>(() => {
     if (userPolicies) {
@@ -653,42 +649,6 @@ export default function PolicyFlow({
     return { nodes: n, edges: e };
   }, [config, updateCondition, makeOutcomeUpdater, updateDestination]);
 
-  async function handleTestLog() {
-    try {
-      const existingTokens = userPolicies?.tokens ?? [];
-      const policy = buildPolicy(config, existingTokens);
-
-      const wallet = wallets.find((w) => w.walletClientType === "privy");
-      if (!wallet) throw new Error("No Privy wallet found");
-      const signature = await wallet.sign(ENCRYPTION_SIGN_MESSAGE);
-
-      const crePublicKey = process.env.NEXT_PUBLIC_CRE_PUBLIC_KEY!;
-      const encrypted = encryptPolicy(policy, signature, crePublicKey);
-
-      const textRecord = buildTextRecord(encrypted, ensName, config.railgunWallet);
-
-      const privyWallet = privyUser?.linkedAccounts.find(
-        (a) => a.type === "wallet" && a.walletClientType === "privy"
-      );
-      if (!privyWallet || !("address" in privyWallet)) throw new Error("No Privy wallet found");
-
-      const token = await getAccessToken();
-      const res = await ky
-        .put("/api/user/text-records", {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "x-seed-address": privyWallet.address,
-          },
-          json: { textRecords: textRecord },
-        })
-        .json();
-
-      await refetch();
-    } catch (e) {
-      console.error("[Policy] Test log failed:", e);
-    }
-  }
-
   async function handleConfirm() {
     const wallet = wallets.find((w) => w.walletClientType === "privy");
     if (!wallet) return;
@@ -771,59 +731,6 @@ export default function PolicyFlow({
       toast.error("Failed to delete policy");
     } finally {
       setDeleting(false);
-    }
-  }
-
-  async function handleTestDecrypt() {
-    try {
-      console.log("[TEST-DECRYPT] Step 1: Reading text records from user context...");
-      if (!user) throw new Error("No user in context");
-      const textRecords = JSON.parse(user.textRecords || "{}");
-      console.log("[TEST-DECRYPT] Text records:", JSON.stringify(textRecords, null, 2));
-
-      const policyStr = textRecords["kondor-policy"];
-      if (!policyStr) {
-        console.log("[TEST-DECRYPT] No kondor-policy found in text records");
-        return;
-      }
-
-      console.log("[TEST-DECRYPT] Step 2: Parsing encrypted policy...");
-      const encryptedPolicy = JSON.parse(policyStr);
-      console.log("[TEST-DECRYPT] Encrypted policy metadata:", {
-        destinationChain: encryptedPolicy.destinationChain,
-        isRailgun: encryptedPolicy.isRailgun,
-        isOfframp: encryptedPolicy.isOfframp,
-        forwardTo: encryptedPolicy.forwardTo,
-        tokenCount: encryptedPolicy.tokens?.length,
-      });
-
-      console.log("[TEST-DECRYPT] Step 3: Signing for key derivation...");
-      const wallet = wallets.find((w) => w.walletClientType === "privy");
-      if (!wallet) throw new Error("No Privy wallet found");
-      const signature = await wallet.sign(ENCRYPTION_SIGN_MESSAGE);
-
-      console.log("[TEST-DECRYPT] Step 4: Decrypting tokens...");
-      const crePublicKey = process.env.NEXT_PUBLIC_CRE_PUBLIC_KEY!;
-      const decryptedTokens = decryptPolicy(encryptedPolicy.tokens, signature, crePublicKey);
-      console.log("[TEST-DECRYPT] Step 4 result:", JSON.stringify(decryptedTokens, null, 2));
-
-      console.log("[TEST-DECRYPT] Step 5: Full decrypted policy:");
-      const fullPolicy = {
-        destinationChain: encryptedPolicy.destinationChain,
-        isRailgun: encryptedPolicy.isRailgun,
-        isOfframp: encryptedPolicy.isOfframp,
-        forwardTo: encryptedPolicy.forwardTo,
-        tokens: decryptedTokens,
-      };
-      console.log("[TEST-DECRYPT] Result:", JSON.stringify(fullPolicy, null, 2));
-
-      console.log("[TEST-DECRYPT] Extra info from text records:");
-      console.log("[TEST-DECRYPT] description:", textRecords.description);
-      console.log("[TEST-DECRYPT] railgunAddress:", textRecords.railgunAddress);
-
-      console.log("[TEST-DECRYPT] Done");
-    } catch (e) {
-      console.error("[TEST-DECRYPT] Failed:", e);
     }
   }
 

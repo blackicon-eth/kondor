@@ -76,6 +76,7 @@ export default function Profile() {
       await refetch();
       toast.success("zkAddress updated successfully");
     } catch (e) {
+      console.error("[Profile] Failed to update zkAddress:", e);
       toast.error("Failed to update zkAddress");
     } finally {
       setUpdatingZkAddress(false);
@@ -117,6 +118,7 @@ export default function Profile() {
       await refetch();
       toast.success("Destination wallet updated successfully");
     } catch (e) {
+      console.error("[Profile] Failed to update destination wallet:", e);
       toast.error("Failed to update destination wallet");
     } finally {
       setUpdatingDestinationWallet(false);
