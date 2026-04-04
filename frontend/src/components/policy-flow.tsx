@@ -30,8 +30,20 @@ import {
 import { TokenIcon } from "@/components/token-icon";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { buildPolicy, buildTextRecord, policyToFlowConfig, type OutcomeConfig, type FlowConfig } from "@/lib/policies/utils";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  buildPolicy,
+  buildTextRecord,
+  policyToFlowConfig,
+  type OutcomeConfig,
+  type FlowConfig,
+} from "@/lib/policies/utils";
 import {
   Dialog,
   DialogContent,
@@ -274,7 +286,10 @@ function OutcomeNode({ data }: NodeProps) {
               </span>
             </div>
             <div className="flex items-center gap-2">
-              <Select value={outcome.swapToken} onValueChange={(v) => v && onChange("swapToken", v)}>
+              <Select
+                value={outcome.swapToken}
+                onValueChange={(v) => v && onChange("swapToken", v)}
+              >
                 <SelectTrigger size="sm" className="bg-surface-container-high">
                   <SelectValue />
                 </SelectTrigger>
@@ -439,11 +454,8 @@ export default function PolicyFlow({
   const { user, refetch, userPolicies, userZkAddress, userForwardTo } = useUser();
   const [saving, setSaving] = useState(false);
 
-  console.log("[TEST] userPolicies:", userPolicies);
-  console.log("[TEST] inputToken:", inputToken);
   if (userPolicies) {
     const fromPolicy = policyToFlowConfig(userPolicies, inputToken, userZkAddress, userForwardTo);
-    console.log("[TEST] fromPolicy:", fromPolicy);
   }
 
   const [config, setConfig] = useState<PolicyConfig>(() => {
@@ -643,46 +655,37 @@ export default function PolicyFlow({
 
   async function handleTestLog() {
     try {
-      console.log("[TEST] Step 1: Building plaintext policy...");
       const existingTokens = userPolicies?.tokens ?? [];
       const policy = buildPolicy(config, existingTokens);
-      console.log("[TEST] Step 1 result:", JSON.stringify(policy, null, 2));
 
-      console.log("[TEST] Step 2: Signing message for key derivation...");
       const wallet = wallets.find((w) => w.walletClientType === "privy");
       if (!wallet) throw new Error("No Privy wallet found");
       const signature = await wallet.sign(ENCRYPTION_SIGN_MESSAGE);
-      console.log("[TEST] Step 2 result: signature =", signature);
 
-      console.log("[TEST] Step 3: Encrypting policy...");
       const crePublicKey = process.env.NEXT_PUBLIC_CRE_PUBLIC_KEY!;
       const encrypted = encryptPolicy(policy, signature, crePublicKey);
-      console.log("[TEST] Step 3 result:", JSON.stringify(encrypted, null, 2));
 
-      console.log("[TEST] Step 4: Building text record...");
       const textRecord = buildTextRecord(encrypted, ensName, config.railgunWallet);
-      console.log("[TEST] Step 4 result:", JSON.stringify(textRecord, null, 2));
 
-      console.log("[TEST] Step 5: Saving to database...");
       const privyWallet = privyUser?.linkedAccounts.find(
         (a) => a.type === "wallet" && a.walletClientType === "privy"
       );
       if (!privyWallet || !("address" in privyWallet)) throw new Error("No Privy wallet found");
 
       const token = await getAccessToken();
-      const res = await ky.put("/api/user/text-records", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "x-seed-address": privyWallet.address,
-        },
-        json: { textRecords: textRecord },
-      }).json();
-      console.log("[TEST] Step 5 result:", JSON.stringify(res, null, 2));
+      const res = await ky
+        .put("/api/user/text-records", {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "x-seed-address": privyWallet.address,
+          },
+          json: { textRecords: textRecord },
+        })
+        .json();
 
       await refetch();
-      console.log("[TEST] Done — text record saved to database");
     } catch (e) {
-      console.error("[TEST] Failed:", e);
+      console.error("[Policy] Test log failed:", e);
     }
   }
 
@@ -738,7 +741,9 @@ export default function PolicyFlow({
 
     setDeleting(true);
     try {
-      const remainingTokens = (userPolicies?.tokens ?? []).filter((t) => t.inputToken !== inputToken);
+      const remainingTokens = (userPolicies?.tokens ?? []).filter(
+        (t) => t.inputToken !== inputToken
+      );
       const policy = buildPolicy(config, remainingTokens);
       // Override tokens to only keep the remaining ones (buildPolicy would re-add the current one)
       policy.tokens = remainingTokens;
@@ -846,22 +851,8 @@ export default function PolicyFlow({
           <Switch checked={config.branchingEnabled} onCheckedChange={toggleBranching} />
         </div>
 
-        {/* Test + Confirm buttons */}
+        {/* Confirm buttons */}
         <div className="flex items-center gap-3">
-          {/* TODO: delete these test buttons before shipping */}
-          <button
-            onClick={handleTestLog}
-            className="hidden h-12 px-6 bg-surface-container-high border border-outline-variant/20 text-secondary-ds font-label text-[10px] uppercase tracking-widest hover:text-on-surface hover:border-outline-variant/40 transition-colors cursor-pointer"
-          >
-            [TEST] Log JSON
-          </button>
-          {/* TODO: delete these test buttons before shipping */}
-          <button
-            onClick={handleTestDecrypt}
-            className="hidden h-12 px-6 bg-surface-container-high border border-outline-variant/20 text-secondary-ds font-label text-[10px] uppercase tracking-widest hover:text-on-surface hover:border-outline-variant/40 transition-colors cursor-pointer"
-          >
-            [TEST] Decrypt
-          </button>
           {showDelete && hasExistingPolicy && (userPolicies?.tokens.length ?? 0) > 1 && (
             <button
               onClick={() => setDeleteModalOpen(true)}
@@ -879,7 +870,11 @@ export default function PolicyFlow({
             className="h-12 px-8 bg-primary-container text-on-primary-container font-headline font-bold uppercase tracking-widest text-sm hover:bg-white hover:text-surface transition-all flex items-center gap-3 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-primary-container disabled:hover:text-on-primary-container"
           >
             Confirm Policy
-            {saving ? <Loader2 className="size-4 animate-spin" /> : <ArrowRight className="size-4" />}
+            {saving ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <ArrowRight className="size-4" />
+            )}
           </button>
         </div>
       </div>
@@ -890,7 +885,8 @@ export default function PolicyFlow({
           <DialogHeader>
             <DialogTitle>Delete {inputToken} Policy</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete the {inputToken} automation policy? This action cannot be undone.
+              Are you sure you want to delete the {inputToken} automation policy? This action cannot
+              be undone.
             </DialogDescription>
           </DialogHeader>
           <div className="flex justify-end gap-3 pt-4">
@@ -906,7 +902,11 @@ export default function PolicyFlow({
               className="h-10 px-6 bg-red-500/20 border border-red-500/30 text-red-400 font-headline font-bold uppercase text-[11px] tracking-widest hover:bg-red-500/30 transition-all cursor-pointer flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Delete
-              {deleting ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
+              {deleting ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Trash2 className="size-3.5" />
+              )}
             </button>
           </div>
         </DialogContent>

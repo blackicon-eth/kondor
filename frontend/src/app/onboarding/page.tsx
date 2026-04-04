@@ -35,7 +35,6 @@ export default function Onboarding() {
 
   // TODO: Replace mock with actual DB write — encrypt policy and save to user's text record
   async function handlePolicyConfirm(policy: PolicyJson) {
-    console.log("[TEST] Policy confirmed:", JSON.stringify(policy, null, 2));
     toast.success("Policy saved successfully!");
     await new Promise((r) => setTimeout(r, 1500));
     setCurrentStep(2);
@@ -283,8 +282,7 @@ export default function Onboarding() {
                 <motion.button
                   onClick={async () => {
                     completeOnboarding();
-                    await new Promise((r) => setTimeout(r, 1000));
-                    router.push("/dashboard");
+                    router.push("/dashboard/USDC");
                   }}
                   className="mt-4 h-14 px-10 bg-primary-container text-on-primary-container font-headline font-bold uppercase tracking-widest text-base hover:bg-white hover:text-surface transition-all flex items-center gap-3 cursor-pointer"
                   initial={{ opacity: 0 }}
