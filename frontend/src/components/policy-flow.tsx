@@ -848,15 +848,17 @@ export default function PolicyFlow({
 
         {/* Test + Confirm buttons */}
         <div className="flex items-center gap-3">
+          {/* TODO: delete these test buttons before shipping */}
           <button
             onClick={handleTestLog}
-            className="h-12 px-6 bg-surface-container-high border border-outline-variant/20 text-secondary-ds font-label text-[10px] uppercase tracking-widest hover:text-on-surface hover:border-outline-variant/40 transition-colors cursor-pointer"
+            className="hidden h-12 px-6 bg-surface-container-high border border-outline-variant/20 text-secondary-ds font-label text-[10px] uppercase tracking-widest hover:text-on-surface hover:border-outline-variant/40 transition-colors cursor-pointer"
           >
             [TEST] Log JSON
           </button>
+          {/* TODO: delete these test buttons before shipping */}
           <button
             onClick={handleTestDecrypt}
-            className="h-12 px-6 bg-surface-container-high border border-outline-variant/20 text-secondary-ds font-label text-[10px] uppercase tracking-widest hover:text-on-surface hover:border-outline-variant/40 transition-colors cursor-pointer"
+            className="hidden h-12 px-6 bg-surface-container-high border border-outline-variant/20 text-secondary-ds font-label text-[10px] uppercase tracking-widest hover:text-on-surface hover:border-outline-variant/40 transition-colors cursor-pointer"
           >
             [TEST] Decrypt
           </button>
