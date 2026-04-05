@@ -352,9 +352,15 @@ export default function MoneriumPage() {
                     return (
                       <div key={order.id} className={`grid grid-cols-12 gap-2 py-2.5 items-center hover:bg-surface-container-low transition-colors ${i < orderList.length - 1 ? "border-b border-outline-variant/10" : ""}`}>
                         <div className="col-span-1 flex items-center">
-                          {isRedeem
-                            ? <ArrowUpRight className="size-3.5 text-primary-container shrink-0" title="Redeem" />
-                            : <ArrowDownLeft className="size-3.5 text-green-400 shrink-0" title="Issue" />}
+                          {isRedeem ? (
+                            <span title="Redeem" className="inline-flex">
+                              <ArrowUpRight className="size-3.5 text-primary-container shrink-0" />
+                            </span>
+                          ) : (
+                            <span title="Issue" className="inline-flex">
+                              <ArrowDownLeft className="size-3.5 text-green-400 shrink-0" />
+                            </span>
+                          )}
                         </div>
                         <div className="col-span-2">
                           <span className="font-label text-xs font-bold text-on-surface">{order.amount}</span>
