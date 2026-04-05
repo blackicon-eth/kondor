@@ -7,8 +7,9 @@ and the Chainlink CRE (Cross-chain Runtime Environment) workflows.
 ## Purpose
 
 Kondor lets users register an ENS subdomain and attach a token-level policy
-(conditional swaps, forwarding, off-ramping or Railgun shielding) to it. The
-server is the piece that makes those policies executable:
+(conditional swaps delivered privately via Railgun, or forced EURe off-ramping
+through Monerium) to it. The server is the piece that makes those policies
+executable:
 
 - Serves an **ERC-3668 CCIP-Read gateway** that resolves `*.<ENS_DOMAIN>` names
   offchain, signs the response with a trusted gateway signer, and mints a new

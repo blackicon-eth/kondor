@@ -20,14 +20,15 @@ treasury with built-in privacy.
 Users register a human-readable subdomain (e.g. `alice.kondor.eth`), attach an
 encrypted **token policy** to it, and then let crypto flow in. The moment funds arrive,
 a Chainlink CRE workflow springs to life, decrypts the policy, and executes the user's
-configured actions on-chain — swapping, lending, forwarding, or privately routing the
-incoming assets to a Railgun zkWallet.
+configured actions on-chain — swapping incoming assets and privately delivering them
+to a Railgun zkAddress, or off-ramping everything to EURe via Monerium.
 
 The problem we solve is simple: receiving crypto today is a passive experience. Funds sit
 idle until you manually move them. Kondor turns a plain receiving address into an
 **active, rule-driven endpoint**. Want incoming ETH to auto-swap 50% into USDC when ETH
-is above $3000, and otherwise auto-lend it on AAVE? Want anything to be forwarded
-to your cold wallet through Railgun for privacy? Configure it once, and Kondor handles the rest.
+is above $3000, and otherwise keep it as ETH? Want everything privately delivered to
+your Railgun zkAddress, or off-ramped to your bank via Monerium? Configure it once, and
+Kondor handles the rest.
 
 Critically, **Kondor is non-custodial and privacy-preserving**. Policies are stored encrypted
 inside the ENS text records of the user's subdomain. Only the user's wallet and the Chainlink
@@ -81,13 +82,13 @@ CRE workflow's key can decrypt them. Not even Kondor's own backend can read your
                     |  4. dispatch actions            |
                     +-------+-----------+-------------+
                             |           |
-               +------------+           +--------------+
-               |            |           |              |
-               v            v           v              v
-          +---------+  +--------+  +---------+   +----------+
-          | Uniswap |  |  AAVE  |  | Forward |   | Railgun  |
-          |  swap   |  |  lend  |  | wallet  |   |  wallet  |
-          +---------+  +--------+  +---------+   +----------+
+               +------------+                          |
+               |            |                          |
+               v            v                          v
+          +---------+  +----------+              +-----------+
+          | Uniswap |  | Railgun  |              | Monerium  |
+          |  swap   |  | zkWallet |              |  EURe/IBAN|
+          +---------+  +----------+              +-----------+
 ```
 
 ---
@@ -122,12 +123,15 @@ and **actions**. Example:
 WHEN token = ETH
   IF price(ETH) > $3000
     SWAP 50% -> USDC (via Uniswap)
-    FORWARD 50% -> 0xColdWallet...
+    KEEP 50% as ETH
   ELSE
-    LEND 100% -> AAVE
+    KEEP 100% as ETH
 ```
 
-Supported actions: `swap`, `lend` (AAVE), `forward`, `private-forward` (Railgun).
+Supported actions: `swap` (via Uniswap). Delivery is driven by two mutually-exclusive
+user-level flags on the policy wrapper: `isRailgun` (default — all outputs routed to
+the user's Railgun zkAddress) and `isOfframp` (all tokens forced to 100% EURe, delivered
+to the user's Monerium IBAN; branching is disabled in this mode).
 
 ### 3. Encrypt the policy
 
@@ -154,14 +158,17 @@ The workflow:
 1. Reads the `kondor-policy` text record from ENS.
 2. Decrypts it using its side of the ECDH exchange.
 3. Evaluates the policy's conditions against live on-chain data.
-4. Dispatches the resulting actions on-chain (Uniswap swaps via API, AAVE deposits,
-   forwards, Railgun shields).
+4. Dispatches the resulting swap actions on-chain (Uniswap swaps via API) and routes
+   outputs according to the wrapper's delivery flag (Railgun shields or Monerium EURe
+   offramp).
 
-### 5. Privacy mode
+### 5. Delivery mode
 
-If the policy specifies a Railgun destination, funds are routed through Railgun's zkWallet
-before reaching the final recipient address, breaking the public link between
-incoming and outgoing transactions.
+By default (`isRailgun = true`), all outputs are shielded and delivered to the user's
+Railgun zkAddress (stored in plaintext on the ENS `railgunAddress` text record),
+breaking the public link between incoming and outgoing transactions. When the user
+flips `isOfframp` on, CRE forces every incoming token to 100% EURe at runtime and
+delivers it to the user's Monerium IBAN.
 
 ---
 
@@ -186,8 +193,8 @@ incoming and outgoing transactions.
 - ENS (subdomain registration, text records, public resolver)
 - Chainlink CRE (Compute, Runtime, Execution) for automated workflows
 - Uniswap v3/v4 Swap APIs
-- AAVE v3 for lending
 - Railgun for private routing
+- Monerium for EURe off-ramp to IBAN
 
 **Cryptography**
 
@@ -264,6 +271,7 @@ pnpm --filter frontend db:migrate
 | **Chainlink CRE** | Trusted off-chain compute that decrypts and executes   | https://docs.chain.link/cre                           |
 | **Uniswap**       | Swap actions inside policies via the Uniswap API       | https://api-docs.uniswap.org/guides/integration_guide |
 | **Railgun**       | Privacy mode — zk shielding of outgoing transfers      | https://docs.railgun.org/                             |
+| **Monerium**      | EURe off-ramp — deliver outputs to the user's IBAN     | https://monerium.com/                                 |
 
 ---
 

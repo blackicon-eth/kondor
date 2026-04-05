@@ -118,13 +118,19 @@ AES-128-GCM. The plaintext is a JSON object with `conditions` and
 
 ## Action execution
 
-Only `actionType === "swap"` is translated into on-chain calldata in this
-handler. Other action types (`supply`, `lp`, `stake`) are currently
-evaluated and returned in `selectedActions` but produce no entries in the
-Uniswap quote list. Swap execution goes through the Kondor server's
-`/swap_5792` endpoint, which returns the Uniswap approval + swap calls
-ready for `batchExecute`. These are then wrapped into the Kondor
-registry report and submitted via `writeReport`.
+`actionType` is narrowed to `"swap"` only; the frontend never emits other
+action types. Swap execution goes through the Kondor server's `/swap_5792`
+endpoint, which returns the Uniswap approval + swap calls ready for
+`batchExecute`. These are then wrapped into the Kondor registry report and
+submitted via `writeReport`.
+
+Offramp routing is driven entirely by the `isOfframp` flag on the envelope
+(plaintext, not encrypted). When `isOfframp=true`, the frontend does not
+emit per-token EURe swap actions; instead the CRE forces 100% of every
+token to EURe at runtime and delivers to the user's Monerium IBAN.
+Branching (IF/ELSE) is disabled in offramp mode. When `isOfframp=false`
+(the default, Railgun mode), outputs are delivered to the user's Railgun
+zkAddress.
 
 ## Config
 

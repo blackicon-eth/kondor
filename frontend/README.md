@@ -16,11 +16,13 @@ AES-GCM encryption.
 
 - One-click ENS subdomain registration under the Kondor parent name.
 - Visual policy builder (React Flow) with conditional branching: "if token X > threshold,
-  then split between swap / Aave lend / forward; else ...".
+  then split between a swap and the remaining source token; else ...".
 - Per-token policies: each input token in a user's ENS text record can have its own flow.
 - Client-side encryption of policy conditions and actions; only the CRE can decrypt them
   via ECDH.
-- Optional private-mode delivery via Railgun zkAddress, with configurable destination wallet.
+- Two delivery modes, toggled at user level via `isOfframp`:
+  - Railgun mode (default): outputs route to the user's Railgun zkAddress.
+  - Offramp mode: every token is forced to 100% EURe swap, delivered to the user's Monerium IBAN.
 - Silent signing with Privy embedded wallets (no wallet-UI interruptions, `showWalletUIs: false`).
 - Dark-theme shadcn/ui components, custom SVG `TokenIcon` (no heavy web3 icon bundles).
 
@@ -245,16 +247,16 @@ type FlowConfig = {
   outcomeIf:   OutcomeConfig;          // split when condition true
   outcomeElse: OutcomeConfig;          // split when condition false
   outcome:     OutcomeConfig;          // split when branching disabled
-  destinationWallet: string;
-  railgunWallet: string;
-  privateMode: boolean;                // isRailgun
+  railgunWallet: string;               // 0zk… zkAddress (used when offramp mode OFF)
+  moneriumIban: string;                // user's IBAN (used when offramp mode ON)
+  offrampMode: boolean;                // mirrors PolicyJson.isOfframp
 };
 
 type OutcomeConfig = {
   swapToken: string;                   // output token for the swap leg
   swapPct: number;                     // % to swap
-  aavePct: number;                     // % to lend into Aave
-  destPct: number;                     // remainder forwarded to destinationWallet
+  offrampPct: number;                  // % to offramp (always 100 in offramp mode, else 0)
+  destPct: number;                     // % that stays as the source token (the remainder)
 };
 ```
 
@@ -274,10 +276,11 @@ type PolicyToken = {
   inputDecimals: number;
   conditions: {
     checks: { token: string; operator: "<" | ">"; threshold: number }[];
-    actions: { actionType: "swap" | "lend"; outputToken: string; percent: number }[];
+    actions: { actionType: "swap"; outputToken: string; percent: number }[];
   }[];
-  elseActions: { actionType: "swap" | "lend"; outputToken: string; percent: number }[];
+  elseActions: { actionType: "swap"; outputToken: string; percent: number }[];
 };
+// Offramp actions are swap actions where outputToken === "EURe".
 ```
 
 The transform lives in `src/lib/policies/utils.ts`:

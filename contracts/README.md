@@ -29,7 +29,7 @@ repository:
 
 Together they let any user pick an ENS subdomain, get a deterministic
 smart account under it, and have an off-chain workflow execute policy
-actions (swaps, sweeps, shielding, off-ramping, forwarding) on that
+actions (swaps, sweeps, Railgun shielding, Monerium off-ramping) on that
 account's balance.
 
 ---
@@ -60,8 +60,10 @@ Key entrypoints:
      bool isSweepable, uint8 mode)`. If the salt has no account yet, a
     new `SimpleAccount` is deployed via `CREATE2` and initialized. The
     calldata batch is then executed via the account's `batchExecute`.
-    `mode` is `0 = Railgun` (private), `1 = OffRamp` (cash out),
-    `2 = ForwardTo` (send to receiver).
+    `mode` is `0 = Railgun` (private delivery to the user's zkAddress,
+    default) or `1 = OffRamp` (force all tokens to EURe, delivered to
+    the user's Monerium IBAN). `2 = ForwardTo` remains defined in the
+    enum as a legacy value but is no longer emitted by the workflow.
   - an **event report** (prefixed by a magic constant
     `keccak256("KONDOR_EVENT_REPORT_V1")`), ABI-decoded as
     `(bytes32 magic, address account, address[] targets,

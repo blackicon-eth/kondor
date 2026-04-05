@@ -27,7 +27,6 @@ type UserContextType = {
   completeOnboarding: () => void;
   userPolicies: PolicyJson | null;
   userZkAddress: string | null;
-  userForwardTo: string | null;
 };
 
 const UserContext = createContext<UserContextType>({
@@ -38,7 +37,6 @@ const UserContext = createContext<UserContextType>({
   completeOnboarding: () => {},
   userPolicies: null,
   userZkAddress: null,
-  userForwardTo: null,
 });
 
 const ONBOARDING_KEY = "kondor:onboarding";
@@ -141,22 +139,20 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   }, [ready, authenticated]);
 
   // Decrypt user policies whenever user data or signature changes
-  const { userPolicies, userZkAddress, userForwardTo } = useMemo<{
+  const { userPolicies, userZkAddress } = useMemo<{
     userPolicies: PolicyJson | null;
     userZkAddress: string | null;
-    userForwardTo: string | null;
   }>(() => {
-    if (!user || !cachedSignature)
-      return { userPolicies: null, userZkAddress: null, userForwardTo: null };
+    if (!user || !cachedSignature) return { userPolicies: null, userZkAddress: null };
 
     try {
       const textRecords = JSON.parse(user.textRecords || "{}");
       const policyStr = textRecords["kondor-policy"];
-      if (!policyStr) return { userPolicies: null, userZkAddress: null, userForwardTo: null };
+      if (!policyStr) return { userPolicies: null, userZkAddress: null };
 
       const encrypted = JSON.parse(policyStr);
       const crePublicKey = process.env.NEXT_PUBLIC_CRE_PUBLIC_KEY;
-      if (!crePublicKey) return { userPolicies: null, userZkAddress: null, userForwardTo: null };
+      if (!crePublicKey) return { userPolicies: null, userZkAddress: null };
 
       const decryptedTokens = decryptPolicy(encrypted.tokens, cachedSignature, crePublicKey);
 
@@ -171,11 +167,10 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
           tokens: decryptedTokens,
         },
         userZkAddress: railgunAddress,
-        userForwardTo: encrypted.forwardTo || null,
       };
     } catch (e) {
       console.error("[user-context] Failed to decrypt policies:", e);
-      return { userPolicies: null, userZkAddress: null, userForwardTo: null };
+      return { userPolicies: null, userZkAddress: null };
     }
   }, [user, cachedSignature]);
 
@@ -189,7 +184,6 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
         completeOnboarding,
         userPolicies,
         userZkAddress,
-        userForwardTo,
       }}
     >
       {children}

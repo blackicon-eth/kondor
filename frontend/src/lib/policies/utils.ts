@@ -1,7 +1,7 @@
 // ─── Policy JSON types ───────────────────────────────────────────────────────
 
 export type PolicyAction = {
-  actionType: "swap" | "lend";
+  actionType: "swap";
   outputToken: string;
   percent: number;
 };
@@ -47,7 +47,7 @@ const TOKEN_DECIMALS: Record<string, number> = {
 export type OutcomeConfig = {
   swapToken: string;
   swapPct: number;
-  aavePct: number;
+  offrampPct: number;
   destPct: number;
 };
 
@@ -62,22 +62,23 @@ export type FlowConfig = {
   outcomeIf: OutcomeConfig;
   outcomeElse: OutcomeConfig;
   outcome: OutcomeConfig;
-  destinationWallet: string;
   railgunWallet: string;
-  privateMode: boolean;
+  moneriumIban: string;
+  offrampMode: boolean;
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function outcomeToActions(outcome: OutcomeConfig): PolicyAction[] {
-  const actions: PolicyAction[] = [];
+  // The offramp path is expressed at the policy level via `isOfframp`; the CRE handles
+  // routing everything to EURe at runtime. Frontend only emits the user-chosen swap.
+  // destPct (remaining) is not an action — the leftover stays as the source token.
   if (outcome.swapPct > 0) {
-    actions.push({ actionType: "swap", outputToken: outcome.swapToken, percent: outcome.swapPct });
+    return [
+      { actionType: "swap", outputToken: outcome.swapToken, percent: outcome.swapPct },
+    ];
   }
-  if (outcome.aavePct > 0) {
-    actions.push({ actionType: "lend", outputToken: "AAVE", percent: outcome.aavePct });
-  }
-  return actions;
+  return [];
 }
 
 function flowConfigToToken(config: FlowConfig): PolicyToken {
@@ -113,14 +114,12 @@ function flowConfigToToken(config: FlowConfig): PolicyToken {
 
 function actionsToOutcome(actions: PolicyAction[]): OutcomeConfig {
   const swap = actions.find((a) => a.actionType === "swap");
-  const lend = actions.find((a) => a.actionType === "lend");
   const swapPct = swap?.percent ?? 0;
-  const aavePct = lend?.percent ?? 0;
   return {
     swapToken: swap?.outputToken ?? "WETH",
     swapPct,
-    aavePct,
-    destPct: Math.max(0, 100 - swapPct - aavePct),
+    offrampPct: 0,
+    destPct: Math.max(0, 100 - swapPct),
   };
 }
 
@@ -132,14 +131,33 @@ export function policyToFlowConfig(
   policy: PolicyJson,
   inputToken: string,
   zkAddress?: string | null,
-  forwardTo?: string | null,
+  iban?: string | null
 ): FlowConfig | null {
   const token = policy.tokens.find((t) => t.inputToken === inputToken);
   if (!token) return null;
 
-  const hasBranching = token.conditions.length > 0;
+  // Branching is always off in offramp mode, regardless of what's persisted.
+  const hasBranching = !policy.isOfframp && token.conditions.length > 0;
   const firstCondition = token.conditions[0];
   const firstCheck = firstCondition?.checks[0];
+
+  // In offramp mode the UI shows a locked 100% offramp row, overriding whatever
+  // swap actions happen to be persisted per-token.
+  const lockedOfframp: OutcomeConfig = {
+    swapToken: "WETH",
+    swapPct: 0,
+    offrampPct: 100,
+    destPct: 0,
+  };
+  const freshOutcome: OutcomeConfig = {
+    swapToken: "WETH",
+    swapPct: 25,
+    offrampPct: 0,
+    destPct: 75,
+  };
+  const parseOutcome = (actions: PolicyAction[]): OutcomeConfig =>
+    policy.isOfframp ? lockedOfframp : actionsToOutcome(actions);
+  const placeholder = policy.isOfframp ? lockedOfframp : freshOutcome;
 
   return {
     sourceToken: token.inputToken,
@@ -149,12 +167,12 @@ export function policyToFlowConfig(
       operator: (firstCheck?.operator ?? ">") as "<" | ">",
       amount: firstCheck?.threshold ?? 3000,
     },
-    outcomeIf: hasBranching ? actionsToOutcome(firstCondition.actions) : { swapToken: "WETH", swapPct: 25, aavePct: 25, destPct: 50 },
-    outcomeElse: actionsToOutcome(token.elseActions),
-    outcome: hasBranching ? { swapToken: "WETH", swapPct: 25, aavePct: 25, destPct: 50 } : actionsToOutcome(token.elseActions),
-    destinationWallet: forwardTo ?? "",
+    outcomeIf: hasBranching ? parseOutcome(firstCondition.actions) : placeholder,
+    outcomeElse: parseOutcome(token.elseActions),
+    outcome: hasBranching ? placeholder : parseOutcome(token.elseActions),
     railgunWallet: zkAddress ?? "",
-    privateMode: policy.isRailgun,
+    moneriumIban: iban ?? "",
+    offrampMode: policy.isOfframp,
   };
 }
 
@@ -215,7 +233,7 @@ export function buildTextRecord(
   encryptedPolicy: EncryptedPolicy,
   ensName: string,
   railgunAddress: string,
-  existingTextRecords: Partial<TextRecord> = {},
+  existingTextRecords: Partial<TextRecord> = {}
 ): TextRecord {
   return {
     ...existingTextRecords,
@@ -225,15 +243,13 @@ export function buildTextRecord(
   };
 }
 
-export function buildPolicy(
-  config: FlowConfig,
-  existingTokens: PolicyToken[] = [],
-): PolicyJson {
+export function buildPolicy(config: FlowConfig, existingTokens: PolicyToken[] = []): PolicyJson {
+  // TODO: revisit persistence — where does Monerium IBAN go (text record? policy field?).
   return {
     destinationChain: "ethereum-sepolia",
-    isRailgun: config.privateMode,
-    isOfframp: false,
-    forwardTo: config.destinationWallet,
+    isRailgun: !config.offrampMode,
+    isOfframp: config.offrampMode,
+    forwardTo: "",
     tokens: upsertPolicyToken(existingTokens, config),
   };
 }

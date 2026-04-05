@@ -66,7 +66,7 @@ If `ciphertext` is absent, the workflow falls back to the plaintext `conditions`
 A decrypted policy is a list of condition branches plus an else branch. Each branch has:
 
 - `checks`: array of `{ token, operator, threshold }` (operators: `<`, `>`, `<=`, `>=`, `==`, `!=`)
-- `actions`: array of `{ actionType: "swap" | "supply" | "lp" | "stake", outputToken, percent }`
+- `actions`: array of `{ actionType: "swap", outputToken, percent }` (swap is currently the only supported action type; off-ramping is driven implicitly by the top-level `isOfframp` flag and Railgun shielding by `isRailgun`, both carried in plaintext on the policy envelope)
 
 Evaluation (see `onHttpTrigger` in `http-triggered/handler/main.ts`):
 

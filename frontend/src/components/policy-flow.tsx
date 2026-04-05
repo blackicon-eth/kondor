@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ReactFlow,
   Background,
@@ -19,7 +19,6 @@ import {
   ArrowRight,
   TrendingUp,
   Landmark,
-  Wallet,
   ShieldCheck,
   ChevronDown,
   Minus,
@@ -29,7 +28,6 @@ import {
 } from "lucide-react";
 import { TokenIcon } from "@/components/token-icon";
 import { Switch } from "@/components/ui/switch";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -56,6 +54,9 @@ import { encryptPolicy, ENCRYPTION_SIGN_MESSAGE } from "@/lib/policies/encrypt";
 import { useWallets, usePrivy } from "@privy-io/react-auth";
 import ky from "ky";
 import { toast } from "sonner";
+
+// TODO: replace with real Monerium IBAN from user context once integration lands.
+const MOCK_MONERIUM_IBAN = "GB29 NWBK 6016 1331 9268 19";
 
 // ─── Token list ──────────────────────────────────────────────────────────────
 const TOKENS = [
@@ -264,9 +265,8 @@ function OutcomeNode({ data }: NodeProps) {
   const onChange = data.onOutcomeChange as (field: string, value: string | number) => void;
   const label = (data.label as string) ?? "OUTCOME";
   const sublabel = (data.sublabel as string) ?? "ALLOCATION";
-
-  const total = outcome.swapPct + outcome.aavePct + outcome.destPct;
-  const isValid = total === 100;
+  const sourceToken = (data.sourceToken as string) ?? "";
+  const offrampMode = (data.offrampMode as boolean) ?? false;
 
   return (
     <div className="relative">
@@ -275,78 +275,77 @@ function OutcomeNode({ data }: NodeProps) {
         position={Position.Left}
         className="bg-primary-container! border-0! size-2!"
       />
-      <NodeShell label={label} sublabel={sublabel} accent={isValid} className="min-w-[300px]">
-        <div className="space-y-3">
-          {/* Swap row */}
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <TrendingUp className="size-4 text-[#627EEA]" />
-              <span className="font-label text-[10px] uppercase tracking-widest text-secondary-ds">
-                Swap
-              </span>
+      <NodeShell label={label} sublabel={sublabel} accent className="min-w-[300px]">
+        {offrampMode ? (
+          <div className="space-y-3">
+            {/* Locked offramp row */}
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <Landmark className="size-4 text-[#D4AF37]" />
+                <span className="font-label text-[10px] uppercase tracking-widest text-secondary-ds">
+                  Offramp → EURe
+                </span>
+              </div>
+              <div className="w-12 text-center font-headline font-bold text-sm text-on-surface">
+                100%
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <Select
-                value={outcome.swapToken}
-                onValueChange={(v) => v && onChange("swapToken", v)}
-              >
-                <SelectTrigger size="sm" className="bg-surface-container-high">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {TOKENS.map((t) => (
-                    <SelectItem key={t.symbol} value={t.symbol}>
-                      {t.symbol}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <PctStepper value={outcome.swapPct} onChange={(v) => onChange("swapPct", v)} />
+
+            <div className="text-center font-label text-[9px] uppercase tracking-[0.2em] py-1.5 mt-1 text-green-400/80 bg-green-400/5 border border-green-400/10">
+              Total: 100% / Valid
             </div>
           </div>
-
-          <div className="h-px bg-outline-variant/10" />
-
-          {/* AAVE row */}
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <Landmark className="size-4 text-[#B6509E]" />
-              <span className="font-label text-[10px] uppercase tracking-widest text-secondary-ds">
-                Lend AAVE
-              </span>
+        ) : (
+          <div className="space-y-3">
+            {/* Swap row */}
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <TrendingUp className="size-4 text-[#627EEA]" />
+                <span className="font-label text-[10px] uppercase tracking-widest text-secondary-ds">
+                  Swap
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Select
+                  value={outcome.swapToken}
+                  onValueChange={(v) => v && onChange("swapToken", v)}
+                >
+                  <SelectTrigger size="sm" className="bg-surface-container-high">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {TOKENS.map((t) => (
+                      <SelectItem key={t.symbol} value={t.symbol}>
+                        {t.symbol}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <PctStepper value={outcome.swapPct} onChange={(v) => onChange("swapPct", v)} />
+              </div>
             </div>
-            <PctStepper value={outcome.aavePct} onChange={(v) => onChange("aavePct", v)} />
-          </div>
 
-          <div className="h-px bg-outline-variant/10" />
+            <div className="h-px bg-outline-variant/10" />
 
-          {/* Destination wallet row */}
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <Wallet className="size-4 text-[#2775CA]" />
-              <span className="font-label text-[10px] uppercase tracking-widest text-secondary-ds">
-                Dest. Wallet
-              </span>
+            {/* Remaining (source token) row */}
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-[5px]">
+                <TokenIcon symbol={sourceToken} size={24} className="-ml-1" />
+                <span className="font-label text-[10px] uppercase tracking-widest text-secondary-ds">
+                  {sourceToken || "Remaining"}
+                </span>
+              </div>
+              <div className="w-12 text-center font-headline font-bold text-sm text-on-surface">
+                {outcome.destPct}%
+              </div>
             </div>
-            <div className="w-12 text-center font-headline font-bold text-sm text-on-surface">
-              {outcome.destPct}%
+
+            {/* Sum indicator */}
+            <div className="text-center font-label text-[9px] uppercase tracking-[0.2em] py-1.5 mt-1 text-green-400/80 bg-green-400/5 border border-green-400/10">
+              Total: 100% / Valid
             </div>
           </div>
-
-          {/* Sum indicator */}
-          <div
-            className={`
-              text-center font-label text-[9px] uppercase tracking-[0.2em] py-1.5 mt-1 transition-colors
-              ${
-                isValid
-                  ? "text-green-400/80 bg-green-400/5 border border-green-400/10"
-                  : "text-red-400/80 bg-red-400/5 border border-red-400/10"
-              }
-            `}
-          >
-            Total: {total}% {isValid ? "/ Valid" : `/ Must be 100%`}
-          </div>
-        </div>
+        )}
       </NodeShell>
       <Handle
         type="source"
@@ -360,7 +359,7 @@ function OutcomeNode({ data }: NodeProps) {
 // ─── Destination Node ────────────────────────────────────────────────────────
 function DestinationNode({ data }: NodeProps) {
   const config = data.config as PolicyConfig;
-  const onChange = data.onDestinationChange as (field: string, value: string | boolean) => void;
+  const onChange = data.onDestinationChange as (field: string, value: string) => void;
 
   return (
     <div className="relative">
@@ -371,41 +370,37 @@ function DestinationNode({ data }: NodeProps) {
       />
       <NodeShell label="DESTINATION" sublabel="OUTPUT" glowing>
         <div className="space-y-3 min-w-[260px]">
-          {/* Address input */}
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              {config.privateMode ? (
-                <ShieldCheck className="size-4 text-green-400" />
-              ) : (
-                <Wallet className="size-4 text-[#2775CA]" />
-              )}
-              <span className="font-label text-[10px] uppercase tracking-widest text-secondary-ds">
-                {config.privateMode ? "Railgun zkAddress" : "Wallet Address"}
-              </span>
+          {config.offrampMode ? (
+            // Monerium IBAN (read-only, from user's Monerium account)
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <Landmark className="size-4 text-[#D4AF37]" />
+                <span className="font-label text-[10px] uppercase tracking-widest text-secondary-ds">
+                  Monerium IBAN
+                </span>
+              </div>
+              <div className="w-full bg-surface-container-high border border-outline-variant/20 text-on-surface font-label text-xs px-3 py-2">
+                {config.moneriumIban || "—"}
+              </div>
             </div>
-            <input
-              type="text"
-              value={config.privateMode ? config.railgunWallet : config.destinationWallet}
-              onChange={(e) =>
-                onChange(config.privateMode ? "railgunWallet" : "destinationWallet", e.target.value)
-              }
-              placeholder={config.privateMode ? "0zk..." : "0x..."}
-              className="w-full bg-surface-container-high border border-outline-variant/20 text-on-surface font-label text-xs px-3 py-2 placeholder:text-secondary-container focus:outline-none focus:border-primary-container/50 transition-colors"
-            />
-          </div>
-
-          <div className="h-px bg-outline-variant/10" />
-
-          {/* Privacy toggle */}
-          <label className="flex items-center gap-2 cursor-pointer">
-            <Checkbox
-              checked={config.privateMode}
-              onCheckedChange={(checked) => onChange("privateMode", !!checked)}
-            />
-            <span className="font-label text-[10px] uppercase tracking-widest text-secondary-ds">
-              Privacy mode
-            </span>
-          </label>
+          ) : (
+            // Railgun zkAddress
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <ShieldCheck className="size-4 text-green-400" />
+                <span className="font-label text-[10px] uppercase tracking-widest text-secondary-ds">
+                  Railgun zkAddress
+                </span>
+              </div>
+              <input
+                type="text"
+                value={config.railgunWallet}
+                onChange={(e) => onChange("railgunWallet", e.target.value)}
+                placeholder="0zk..."
+                className="w-full bg-surface-container-high border border-outline-variant/20 text-on-surface font-label text-xs px-3 py-2 placeholder:text-secondary-container focus:outline-none focus:border-primary-container/50 transition-colors"
+              />
+            </div>
+          )}
         </div>
       </NodeShell>
     </div>
@@ -430,8 +425,15 @@ const nodeTypes = {
 const defaultOutcome: OutcomeConfig = {
   swapToken: "WETH",
   swapPct: 25,
-  aavePct: 25,
-  destPct: 50,
+  offrampPct: 0,
+  destPct: 75,
+};
+
+const offrampOutcome: OutcomeConfig = {
+  swapToken: "WETH",
+  swapPct: 0,
+  offrampPct: 100,
+  destPct: 0,
 };
 
 export default function PolicyFlow({
@@ -451,24 +453,26 @@ export default function PolicyFlow({
 }) {
   const { wallets } = useWallets();
   const { user: privyUser, getAccessToken } = usePrivy();
-  const { refetch, userPolicies, userZkAddress, userForwardTo } = useUser();
+  const { refetch, userPolicies, userZkAddress } = useUser();
   const [saving, setSaving] = useState(false);
 
   const [config, setConfig] = useState<PolicyConfig>(() => {
     if (userPolicies) {
-      const fromPolicy = policyToFlowConfig(userPolicies, inputToken, userZkAddress, userForwardTo);
+      const fromPolicy = policyToFlowConfig(userPolicies, inputToken, userZkAddress, MOCK_MONERIUM_IBAN);
       if (fromPolicy) return fromPolicy;
     }
+    const offrampMode = userPolicies?.isOfframp ?? false;
+    const initialOutcome = offrampMode ? offrampOutcome : defaultOutcome;
     return {
       sourceToken: inputToken,
       branchingEnabled: false,
       condition: { token: "WETH", operator: ">", amount: 3000 },
-      outcomeIf: { ...defaultOutcome },
-      outcomeElse: { swapToken: "WETH", swapPct: 0, aavePct: 100, destPct: 0 },
-      outcome: { ...defaultOutcome },
-      destinationWallet: userForwardTo || "",
+      outcomeIf: { ...initialOutcome },
+      outcomeElse: { ...initialOutcome },
+      outcome: { ...initialOutcome },
       railgunWallet: userZkAddress || "",
-      privateMode: false,
+      moneriumIban: MOCK_MONERIUM_IBAN,
+      offrampMode,
     };
   });
 
@@ -476,22 +480,22 @@ export default function PolicyFlow({
   const [initialized, setInitialized] = useState(false);
   useEffect(() => {
     if (initialized || !userPolicies) return;
-    const fromPolicy = policyToFlowConfig(userPolicies, inputToken, userZkAddress, userForwardTo);
+    const fromPolicy = policyToFlowConfig(userPolicies, inputToken, userZkAddress, MOCK_MONERIUM_IBAN);
     if (fromPolicy) {
       setConfig(fromPolicy);
       setInitialized(true);
     }
-  }, [userPolicies, inputToken, initialized, userZkAddress, userForwardTo]);
+  }, [userPolicies, inputToken, initialized, userZkAddress]);
 
   // Prefill wallet addresses when context values arrive (for new tokens without an existing policy)
   useEffect(() => {
     if (initialized) return;
     setConfig((prev) => ({
       ...prev,
-      destinationWallet: userForwardTo || "",
       railgunWallet: userZkAddress || "",
+      moneriumIban: MOCK_MONERIUM_IBAN,
     }));
-  }, [userForwardTo, userZkAddress, initialized]);
+  }, [userZkAddress, initialized]);
 
   const toggleBranching = useCallback(() => {
     setConfig((prev) => ({ ...prev, branchingEnabled: !prev.branchingEnabled }));
@@ -510,17 +514,13 @@ export default function PolicyFlow({
         const current = prev[key];
         const updated = { ...current, [field]: value };
 
-        // Auto-balance destPct if swap or aave changed, cap total at 100
-        if (field === "swapPct" || field === "aavePct") {
-          let swapPct = field === "swapPct" ? (value as number) : current.swapPct;
-          let aavePct = field === "aavePct" ? (value as number) : current.aavePct;
-          if (swapPct + aavePct > 100) {
-            if (field === "swapPct") swapPct = 100 - aavePct;
-            else aavePct = 100 - swapPct;
-          }
+        // Auto-balance destPct when swap changes. Offramp isn't part of per-token actions
+        // anymore (it's expressed via the user-level isOfframp flag), so it's always 0 here.
+        if (field === "swapPct") {
+          const swapPct = Math.min(100, Math.max(0, value as number));
           updated.swapPct = swapPct;
-          updated.aavePct = aavePct;
-          updated.destPct = Math.max(0, 100 - swapPct - aavePct);
+          updated.offrampPct = 0;
+          updated.destPct = 100 - swapPct;
         }
 
         return { ...prev, [key]: updated };
@@ -529,7 +529,7 @@ export default function PolicyFlow({
     []
   );
 
-  const updateDestination = useCallback((field: string, value: string | boolean) => {
+  const updateDestination = useCallback((field: string, value: string) => {
     setConfig((prev) => ({ ...prev, [field]: value }));
   }, []);
 
@@ -580,6 +580,8 @@ export default function PolicyFlow({
           onOutcomeChange: makeOutcomeUpdater("outcomeIf"),
           label: "OUTCOME",
           sublabel: "IF TRUE",
+          sourceToken: config.sourceToken,
+          offrampMode: config.offrampMode,
         },
         draggable: false,
       });
@@ -594,6 +596,8 @@ export default function PolicyFlow({
           onOutcomeChange: makeOutcomeUpdater("outcomeElse"),
           label: "OUTCOME",
           sublabel: "IF FALSE",
+          sourceToken: config.sourceToken,
+          offrampMode: config.offrampMode,
         },
         draggable: false,
       });
@@ -627,6 +631,8 @@ export default function PolicyFlow({
           onOutcomeChange: makeOutcomeUpdater("outcome"),
           label: "OUTCOME",
           sublabel: "ALLOCATION",
+          sourceToken: config.sourceToken,
+          offrampMode: config.offrampMode,
         },
         draggable: false,
       });
@@ -648,6 +654,17 @@ export default function PolicyFlow({
 
     return { nodes: n, edges: e };
   }, [config, updateCondition, makeOutcomeUpdater, updateDestination]);
+
+  // TODO: remove this test handler before shipping.
+  function handleTestLog() {
+    try {
+      const existingTokens = userPolicies?.tokens ?? [];
+      const policy = buildPolicy(config, existingTokens);
+      console.log("[TEST] kondor-policy (plaintext) that would be written:", policy);
+    } catch (e) {
+      console.error("[TEST] Failed to build policy:", e);
+    }
+  }
 
   async function handleConfirm() {
     const wallet = wallets.find((w) => w.walletClientType === "privy");
@@ -738,8 +755,13 @@ export default function PolicyFlow({
     <div className="w-full space-y-4">
       {/* Top bar */}
       <div className="w-full flex items-center justify-between">
-        {/* Branching toggle */}
-        <div className="inline-flex items-center gap-4 bg-surface-container px-5 py-3 border border-outline-variant/15">
+        {/* Branching toggle — visible but disabled in offramp mode (branching is pointless
+            when every outcome is forced to 100% offramp) */}
+        <div
+          className={`inline-flex items-center gap-4 bg-surface-container px-5 py-3 border border-outline-variant/15 transition-opacity duration-300 ${
+            config.offrampMode ? "opacity-40 pointer-events-none" : "opacity-100"
+          }`}
+        >
           <div className="flex items-center gap-3 w-[300px]">
             <GitBranch
               className={`size-5 transition-colors ${config.branchingEnabled ? "text-primary-container" : "text-secondary-ds"}`}
@@ -749,13 +771,19 @@ export default function PolicyFlow({
                 Conditional Routing
               </div>
               <div className="font-label text-[10px] uppercase tracking-widest text-secondary-ds">
-                {config.branchingEnabled
-                  ? "IF / ELSE enabled — route by condition"
-                  : "Direct mode — single outcome path"}
+                {config.offrampMode
+                  ? "Disabled in offramp mode"
+                  : config.branchingEnabled
+                    ? "IF / ELSE enabled — route by condition"
+                    : "Direct mode — single outcome path"}
               </div>
             </div>
           </div>
-          <Switch checked={config.branchingEnabled} onCheckedChange={toggleBranching} />
+          <Switch
+            checked={config.branchingEnabled}
+            onCheckedChange={toggleBranching}
+            disabled={config.offrampMode}
+          />
         </div>
 
         {/* Confirm buttons */}
@@ -768,21 +796,57 @@ export default function PolicyFlow({
               <Trash2 className="size-4" />
             </button>
           )}
+          {/* TODO: remove this test button before shipping. */}
           <button
-            onClick={handleConfirm}
-            disabled={
-              saving ||
-              !(config.privateMode ? config.railgunWallet.trim() : config.destinationWallet.trim())
-            }
-            className="h-12 px-8 bg-primary-container text-on-primary-container font-headline font-bold uppercase tracking-widest text-sm hover:bg-white hover:text-surface transition-all flex items-center gap-3 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-primary-container disabled:hover:text-on-primary-container"
+            onClick={handleTestLog}
+            disabled={saving || config.offrampMode || !config.railgunWallet.trim()}
+            className="hidden h-12 px-6 bg-surface-container-high border border-outline-variant/20 text-secondary-ds font-label text-[10px] uppercase tracking-widest hover:text-on-surface hover:border-outline-variant/40 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-secondary-ds disabled:hover:border-outline-variant/20"
           >
-            Confirm Policy
-            {saving ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <ArrowRight className="size-4" />
-            )}
+            [TEST] Log Text Record
           </button>
+          {config.offrampMode ? (
+            // Status placeholder: editing disabled, offramp is enforced at policy level.
+            <div
+              className="relative h-12 flex items-center gap-3 bg-surface-container-high border border-[#D4AF37]/30 pl-4 pr-8"
+              style={{ clipPath: "polygon(0 0, 100% 0, 97% 100%, 0% 100%)" }}
+            >
+              {/* Solid gold left stripe with glow */}
+              <div
+                className="absolute inset-y-0 left-0 w-1 bg-[#D4AF37]"
+                style={{ boxShadow: "0 0 12px rgba(212, 175, 55, 0.6)" }}
+              />
+              {/* Pulsing LED */}
+              <div className="relative flex items-center justify-center size-3 ml-1">
+                <div className="absolute size-3 rounded-full bg-[#D4AF37]/25 animate-ping" />
+                <div
+                  className="relative size-1.5 rounded-full bg-[#D4AF37]"
+                  style={{ boxShadow: "0 0 6px rgba(212, 175, 55, 0.9)" }}
+                />
+              </div>
+              <Landmark className="size-4 text-[#D4AF37] shrink-0" />
+              <div className="flex flex-col leading-tight">
+                <span className="font-headline font-bold text-[13px] uppercase tracking-widest text-on-surface">
+                  Offramp Mode Active
+                </span>
+                <span className="font-label text-[9px] uppercase tracking-[0.2em] text-[#D4AF37]/70">
+                  Policies locked at user level
+                </span>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={handleConfirm}
+              disabled={saving || !config.railgunWallet.trim()}
+              className="h-12 px-8 bg-primary-container text-on-primary-container font-headline font-bold uppercase tracking-widest text-sm hover:bg-white hover:text-surface transition-all flex items-center gap-3 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-primary-container disabled:hover:text-on-primary-container"
+            >
+              Confirm Policy
+              {saving ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <ArrowRight className="size-4" />
+              )}
+            </button>
+          )}
         </div>
       </div>
 
@@ -830,15 +894,43 @@ export default function PolicyFlow({
           }}
         />
         <ReactFlowProvider>
-          <PolicyFlowInner nodes={nodes} edges={edges} />
+          <PolicyFlowInner
+            nodes={nodes}
+            edges={edges}
+            fit={!config.branchingEnabled}
+          />
         </ReactFlowProvider>
       </div>
     </div>
   );
 }
 
-function PolicyFlowInner({ nodes, edges }: { nodes: Node[]; edges: Edge[] }) {
-  const { zoomIn, zoomOut } = useReactFlow();
+function PolicyFlowInner({
+  nodes,
+  edges,
+  fit,
+}: {
+  nodes: Node[];
+  edges: Edge[];
+  fit: boolean;
+}) {
+  const { zoomIn, zoomOut, fitView, setViewport } = useReactFlow();
+  const mountedRef = useRef(false);
+
+  // When the layout is sparse (branching off or offramp mode) center it and zoom in.
+  // When branching is on the flow has twice as many nodes, so use the default viewport.
+  // Skip animation on first mount (ReactFlow's fitView prop handles initial placement).
+  useEffect(() => {
+    if (!mountedRef.current) {
+      mountedRef.current = true;
+      return;
+    }
+    if (fit) {
+      fitView({ padding: 0.15, duration: 400 });
+    } else {
+      setViewport({ x: 20, y: 50, zoom: 1 }, { duration: 400 });
+    }
+  }, [fit, fitView, setViewport]);
 
   return (
     <>
@@ -846,7 +938,9 @@ function PolicyFlowInner({ nodes, edges }: { nodes: Node[]; edges: Edge[] }) {
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
-        defaultViewport={{ x: 20, y: 20, zoom: 1 }}
+        defaultViewport={{ x: 20, y: 50, zoom: 1 }}
+        fitView={fit}
+        fitViewOptions={{ padding: 0.15 }}
         panOnDrag={false}
         zoomOnScroll={false}
         zoomOnPinch={false}
