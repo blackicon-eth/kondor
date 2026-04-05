@@ -6,7 +6,6 @@ import { toast } from "sonner";
 import { useUser } from "@/context/user-context";
 import { usePrivy } from "@privy-io/react-auth";
 import { useAuth, useAuthContext } from "@monerium/sdk-react-provider";
-import { useClearMoneriumSession } from "@/components/monerium-wrapper";
 import ky from "ky";
 import { useRouter } from "next/navigation";
 import {
