@@ -7,6 +7,7 @@ export const users = sqliteTable("users", {
   coinType: integer("coin_type").notNull(),
   queryNonce: integer("query_nonce").notNull().default(0),
   lastQueryAt: integer("last_query_at", { mode: "timestamp" }),
+  moneriumData: text("monerium_data"),
   createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
   updatedAt: integer("updated_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
 });

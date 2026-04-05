@@ -19896,7 +19896,8 @@ var MAINNET_TOKENS = {
   DAI: "0x6B175474E89094C44Da98b954EedeAC495271d0F",
   USDT: "0xdAC17F958D2ee523a2206206994597C13D831ec7",
   WBTC: "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599",
-  LINK: "0x514910771AF9Ca656af840dff83E8264EcF986CA"
+  LINK: "0x514910771AF9Ca656af840dff83E8264EcF986CA",
+  EURE: "0x39b8b6385416f4ca36a20319f70d28621895279d"
 };
 var SEPOLIA_TOKENS = {
   USDC: "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
@@ -19905,8 +19906,11 @@ var SEPOLIA_TOKENS = {
   USDT: "0xaA8E23Fb1079EA71e0a56F48a2aA51851D8433D0",
   WBTC: "0x29f2D40B0605204364af54EC677bD022dA425d03",
   LINK: "0x779877A7B0D9E8603169DdbD7836e478b4624789",
-  EURe: "0x67b34b93ac295c985e856E5B8A20D83026b580Eb"
+  EURE: "0x67b34b93ac295c985e856E5B8A20D83026b580Eb"
 };
+function isEureStableSymbol(s) {
+  return s.trim().toUpperCase() === "EURE";
+}
 function buildPriceUrl(symbols) {
   const addressParams = symbols.map((s) => {
     const addr = MAINNET_TOKENS[s.toUpperCase()];
@@ -20030,14 +20034,24 @@ var onHttpTrigger = (runtime2, payload) => {
     }
   }
   const symbolList = [...priceTokens];
-  const priceUrl = buildPriceUrl(symbolList);
-  runtime2.log(`Fetching prices from Portals on ${PORTALS_PRICE_CHAIN} for: ${symbolList.join(", ")}`);
-  const httpClient = new ClientCapability2;
-  const priceBody = httpClient.sendRequest(runtime2, apiGet(priceUrl, apiKey, "Price fetch"), consensusIdenticalAggregation())().result();
-  const priceData = JSON.parse(priceBody);
+  const portalsSymbols = symbolList.filter((s) => !isEureStableSymbol(s));
   const prices = {};
-  for (const token of priceData.tokens) {
-    prices[token.symbol.toUpperCase()] = token.price;
+  for (const s of symbolList) {
+    if (isEureStableSymbol(s)) {
+      prices.EURE = 1;
+    }
+  }
+  const httpClient = new ClientCapability2;
+  if (portalsSymbols.length > 0) {
+    const priceUrl = buildPriceUrl(portalsSymbols);
+    runtime2.log(`Fetching prices from Portals on ${PORTALS_PRICE_CHAIN} for: ${portalsSymbols.join(", ")}`);
+    const priceBody = httpClient.sendRequest(runtime2, apiGet(priceUrl, apiKey, "Price fetch"), consensusIdenticalAggregation())().result();
+    const priceData = JSON.parse(priceBody);
+    for (const token of priceData.tokens) {
+      prices[token.symbol.toUpperCase()] = token.price;
+    }
+  } else {
+    runtime2.log("Skipping Portals: only EURe stable — using $1 for EURE");
   }
   runtime2.log(`Prices: ${JSON.stringify(prices)}`);
   let selectedActions = intent.elseActions;
@@ -20077,8 +20091,10 @@ var onHttpTrigger = (runtime2, payload) => {
   let targets = [];
   let values = [];
   let calldatas = [];
-  if (quotes.length > 0) {
-    const serverUrl = runtime2.getSecret({ id: "KONDOR_SERVER_URL" }).result().value.trim();
+  const serverUrl = runtime2.getSecret({ id: "KONDOR_SERVER_URL" }).result().value.trim();
+  if (intent.isOfframp) {
+    runtime2.log("OffRamp mode — empty batch, deferring to event-driven trigger");
+  } else if (quotes.length > 0) {
     const swapPayload = {
       quotes,
       includeApprovalCalls: true,
@@ -20092,7 +20108,7 @@ var onHttpTrigger = (runtime2, payload) => {
     values = swapResult.values.map((v) => BigInt(v));
     calldatas = swapResult.calldatas;
   } else {
-    runtime2.log("No swap quotes — submitting report with empty batch (touchedTokens still include input token)");
+    runtime2.log("No action — submitting report with empty batch (touchedTokens still include input token)");
   }
   const touchedSet = new Set;
   touchedSet.add(resolveSepoliaAddress(intent.inputToken).toLowerCase());

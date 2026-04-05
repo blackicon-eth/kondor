@@ -43,8 +43,8 @@ When a `ReportProcessed` log arrives, `onReportProcessed` runs:
 2. **Skip reorg'd logs** — if `log.removed`, return early with
    `skipped: "removed-log"`.
 3. **Skip non-sweepable accounts** — if `!isSweepable`, return early.
-4. **Skip non-Railgun modes** — only `mode === 0` (Railgun) is handled here.
-   Other modes return `skipped: "non-railgun-mode"`.
+4. **Skip unhandled modes** — `mode === 0` (Railgun shield) and `mode === 1`
+   (Monerium offramp) are handled. Other modes return `skipped: "unhandled-mode"`.
 5. **Dedupe touched tokens** (case-insensitive on address).
 6. **Fetch balances** for `account` across all touched tokens in a single
    Multicall3 `aggregate3` call (`allowFailure: true`), decoding each
@@ -84,7 +84,8 @@ shielded tokens, `writeReportStatus`, `writeReportTxHash`, etc.).
 | --- | --- |
 | `registryAddress` | `KondorRegistry` address on the target chain (hex). |
 | `chainSelectorName` | CRE chain selector name, resolved via `getNetwork({ chainFamily: "evm", chainSelectorName })`. |
-| `serverUrl` | Base URL of the Kondor server that provides `/railgun/shield-calls`. |
+| `serverUrl` | Base URL of the Kondor server (`/railgun/shield-calls`, `/monerium/*`). |
+| `ensSubdomain` | Optional. For **mode 1** offramp: kondor user label (e.g. `dronez`) so the server can load Monerium tokens and run link-address → redeem for the `account` (SCA). |
 | `confidence` | Optional log-trigger confidence level. Defaults to `CONFIDENCE_LEVEL_SAFE`. |
 
 Current values:
@@ -144,6 +145,7 @@ workflows/event-triggered/
 - `fetchTouchedTokenBalances(...)` — Multicall3 `aggregate3` over `balanceOf`.
 - `buildShieldBatchCalls(runtime, balances)` — calls
   `POST /railgun/shield-calls` with identical-aggregation consensus.
+- `buildOfframpBatchCalls(...)` — mode `1`: `POST /monerium/link-address` (202 → link `SignMsg` batch only), then `POST /monerium/redeem` with `ensSubdomain`; uses `completeLinkOnChain` from the server if redeem says not linked.
 - `createEventReportPayload(...)` — ABI-encodes the report for
   `KondorRegistry.onReport`.
 - `main()` — `Runner.newRunner<Config>().run(initWorkflow)`.

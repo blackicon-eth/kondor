@@ -15,6 +15,7 @@
   "dependencies": {
     "@kondor/shared": "workspace:*",
     "@libsql/client": "^0.17.2",
+    "@monerium/sdk": "^3.4.10",
     "@railgun-community/engine": "^9.5.3",
     "@railgun-community/shared-models": "^8.0.1",
     "alchemy-sdk": "^3.6.1",

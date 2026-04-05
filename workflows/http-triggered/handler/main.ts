@@ -44,30 +44,36 @@ const PORTALS_PRICE_CHAIN = "ethereum";
 const SEPOLIA_CHAIN_ID = 11155111;
 const REPORT_GAS_LIMIT = "3000000";
 
-// Mainnet addresses for Portals price lookups
+// Mainnet addresses for Portals price lookups (keys must be UPPERCASE — lookups use symbol.toUpperCase())
 const MAINNET_TOKENS: Record<string, string> = {
   USDC: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
   WETH: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
-  DAI:  "0x6B175474E89094C44Da98b954EedeAC495271d0F",
+  DAI: "0x6B175474E89094C44Da98b954EedeAC495271d0F",
   USDT: "0xdAC17F958D2ee523a2206206994597C13D831ec7",
   WBTC: "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599",
   LINK: "0x514910771AF9Ca656af840dff83E8264EcF986CA",
+  EURE: "0x39b8b6385416f4ca36a20319f70d28621895279d",
 };
 
 // Sepolia addresses for swap execution
 const SEPOLIA_TOKENS: Record<string, string> = {
   USDC: "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
   WETH: "0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9",
-  DAI:  "0xFF34B3d4Aee8ddCd6F9AFFFB6Fe49bD371b8a357",
+  DAI: "0xFF34B3d4Aee8ddCd6F9AFFFB6Fe49bD371b8a357",
   USDT: "0xaA8E23Fb1079EA71e0a56F48a2aA51851D8433D0",
   WBTC: "0x29f2D40B0605204364af54EC677bD022dA425d03",
   LINK: "0x779877A7B0D9E8603169DdbD7836e478b4624789",
-  EURe: "0x67b34b93ac295c985e856E5B8A20D83026b580Eb",
+  EURE: "0x67b34b93ac295c985e856E5B8A20D83026b580Eb",
 };
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/** Monerium EURe: treat as $1 stable; Portals often lacks a usable mainnet quote for this symbol. */
+function isEureStableSymbol(s: string): boolean {
+  return s.trim().toUpperCase() === "EURE";
+}
 
 function buildPriceUrl(symbols: string[]): string {
   const addressParams = symbols
@@ -243,18 +249,30 @@ export const onHttpTrigger = (runtime: Runtime<Config>, payload: HTTPPayload): s
   }
 
   const symbolList = [...priceTokens];
-  const priceUrl = buildPriceUrl(symbolList);
-  runtime.log(`Fetching prices from Portals on ${PORTALS_PRICE_CHAIN} for: ${symbolList.join(", ")}`);
+  const portalsSymbols = symbolList.filter((s) => !isEureStableSymbol(s));
+
+  const prices: Record<string, number> = {};
+  for (const s of symbolList) {
+    if (isEureStableSymbol(s)) {
+      prices.EURE = 1;
+    }
+  }
 
   const httpClient = new HTTPClient();
-  const priceBody = httpClient
-    .sendRequest(runtime, apiGet(priceUrl, apiKey, "Price fetch"), consensusIdenticalAggregation<string>())()
-    .result();
 
-  const priceData = JSON.parse(priceBody) as PortalsPriceResponse;
-  const prices: Record<string, number> = {};
-  for (const token of priceData.tokens) {
-    prices[token.symbol.toUpperCase()] = token.price;
+  if (portalsSymbols.length > 0) {
+    const priceUrl = buildPriceUrl(portalsSymbols);
+    runtime.log(`Fetching prices from Portals on ${PORTALS_PRICE_CHAIN} for: ${portalsSymbols.join(", ")}`);
+    const priceBody = httpClient
+      .sendRequest(runtime, apiGet(priceUrl, apiKey, "Price fetch"), consensusIdenticalAggregation<string>())()
+      .result();
+
+    const priceData = JSON.parse(priceBody) as PortalsPriceResponse;
+    for (const token of priceData.tokens) {
+      prices[token.symbol.toUpperCase()] = token.price;
+    }
+  } else {
+    runtime.log("Skipping Portals: only EURe stable — using $1 for EURE");
   }
   runtime.log(`Prices: ${JSON.stringify(prices)}`);
 
@@ -304,13 +322,20 @@ export const onHttpTrigger = (runtime: Runtime<Config>, payload: HTTPPayload): s
     runtime.log(`  ${q.tokenIn} → ${q.tokenOut} amount=${q.amount}`);
   }
 
-  // --- 5. Call server /swap_5792 when there are swaps; otherwise empty batch (still report touched input + mode) ---
+  // --- 5. Build on-chain calls: offramp (Monerium), swap, or empty batch ------
   let targets: Hex[] = [];
   let values: bigint[] = [];
   let calldatas: Hex[] = [];
 
-  if (quotes.length > 0) {
-    const serverUrl = runtime.getSecret({ id: "KONDOR_SERVER_URL" }).result().value.trim();
+  const serverUrl = runtime.getSecret({ id: "KONDOR_SERVER_URL" }).result().value.trim();
+
+  if (intent.isOfframp) {
+    // OffRamp: submit empty batch with mode=1. The account may not be deployed yet
+    // at HTTP-trigger time. The event-driven trigger fires after ReportProcessed and
+    // handles the Monerium order placement + signMsg once the account is live on-chain.
+    runtime.log("OffRamp mode — empty batch, deferring to event-driven trigger");
+  } else if (quotes.length > 0) {
+    // Swap path
     const swapPayload = {
       quotes,
       includeApprovalCalls: true,
@@ -341,7 +366,7 @@ export const onHttpTrigger = (runtime: Runtime<Config>, payload: HTTPPayload): s
     values = swapResult.values.map((v: string) => BigInt(v));
     calldatas = swapResult.calldatas as Hex[];
   } else {
-    runtime.log("No swap quotes — submitting report with empty batch (touchedTokens still include input token)");
+    runtime.log("No action — submitting report with empty batch (touchedTokens still include input token)");
   }
 
   // --- 6. ABI-encode report for KondorRegistry.onReport ---

@@ -1,5 +1,6 @@
 {
-  "registryAddress": "0xc6Ae83B8F8B92e07C6e807eb9957EBe01136f5cB",
+  "registryAddress": "0xe03989c21e25931e1F524A5c5D1B1755659D1d49",
   "chainSelectorName": "ethereum-testnet-sepolia",
-  "serverUrl": "http://localhost:3001"
+  "serverUrl": "http://localhost:3001",
+  "ensSubdomain": "dronez"
 }

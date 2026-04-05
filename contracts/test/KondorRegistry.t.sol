@@ -21,6 +21,8 @@ contract MockTarget {
 }
 
 contract KondorRegistryTest is Test {
+    event SignMsg(bytes32 indexed msgHash);
+
     bytes32 constant EVENT_REPORT_MAGIC = keccak256("KONDOR_EVENT_REPORT_V1");
 
     KondorRegistry registry;
@@ -232,6 +234,39 @@ contract KondorRegistryTest is Test {
 
         vm.expectRevert(SimpleAccount.AlreadyInitialized.selector);
         SimpleAccount(payable(account)).initialize(bytes32(0), address(0));
+    }
+
+    function test_signMsg_via_onReport_emits() public {
+        bytes32 s = _salt("sign.Kondor");
+        bytes32 msgHash = keccak256("monerium-link-message");
+
+        vm.prank(forwarder);
+        registry.onReport(
+            "",
+            _encodeReport(s, _aliceHash(), new address[](0), new uint256[](0), new bytes[](0))
+        );
+        address account = registry.getAccount(s);
+
+        address[] memory targets = new address[](1);
+        targets[0] = account;
+        uint256[] memory values = new uint256[](1);
+        bytes[] memory calldatas = new bytes[](1);
+        calldatas[0] = abi.encodeCall(SimpleAccount.signMsg, (msgHash));
+
+        vm.expectEmit(true, true, true, true, account);
+        emit SignMsg(msgHash);
+
+        vm.prank(forwarder);
+        registry.onReport("", _encodeReport(s, _aliceHash(), targets, values, calldatas));
+    }
+
+    function test_signMsg_direct_call_reverts() public {
+        bytes32 s = _salt("sign2.Kondor");
+        address account = registry.createAccount(s, _aliceHash());
+
+        vm.prank(address(0xBEEF));
+        vm.expectRevert(SimpleAccount.SignMsgNotInner.selector);
+        SimpleAccount(payable(account)).signMsg(bytes32(uint256(1)));
     }
 
     function test_account_batchExecute_revert_propagates() public {

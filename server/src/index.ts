@@ -23,6 +23,8 @@ import {
   ed25519PubToX25519,
   ed25519PrivToX25519,
 } from "@kondor/shared/crypto";
+import { executeOfframp, linkMoneriumAddress } from "./moneriumOfframp.js";
+import { listMoneriumOrdersBySeed, listMoneriumOrdersBySubdomain } from "./moneriumOrders.js";
 
 async function bootstrap(): Promise<void> {
   const app = express();
@@ -413,6 +415,121 @@ async function bootstrap(): Promise<void> {
     }
   });
 
+  // ── Monerium offramp ─────────────────────────────────────────────
+  //
+  // Called by the CRE HTTP workflow when isOfframp=true.
+  // Body: { account, amount, salt? (unused for timestamp), ensSubdomain?, messageAt? }
+  // messageAt: ISO 8601 for the Monerium order string; omit = current UTC minute (fixes "timestamp is expired").
+  // If ensSubdomain is set, Monerium tokens are loaded for that user; account is still the on-chain SCA.
+  // Response: { ok, orderId, message, iban, targets, values, calldatas }
+  //   where calldatas includes EURe.approve(moneriumController, maxUint)
+  //   so the CRE can execute the on-chain approval that lets Monerium burnFrom.
+
+  // GET /monerium/orders?seedAddress=0x...
+  app.get("/monerium/orders", async (req, res) => {
+    const { seedAddress } = req.query as { seedAddress?: string };
+    if (!seedAddress) {
+      res.status(400).json({ error: "seedAddress query param required" });
+      return;
+    }
+    try {
+      const { orders, error } = await listMoneriumOrdersBySeed(seedAddress);
+      if (error) {
+        res.status(200).json({ orders: [], warning: error });
+        return;
+      }
+      res.json({ orders });
+    } catch (err) {
+      console.error("[monerium/orders]", err);
+      res.status(500).json({ orders: [], error: String(err) });
+    }
+  });
+
+  // GET /monerium/orders-by-subdomain?ensSubdomain=dronez
+  app.get("/monerium/orders-by-subdomain", async (req, res) => {
+    const { ensSubdomain } = req.query as { ensSubdomain?: string };
+    if (!ensSubdomain?.trim()) {
+      res.status(400).json({ error: "ensSubdomain query param required" });
+      return;
+    }
+    try {
+      const { orders, error } = await listMoneriumOrdersBySubdomain(ensSubdomain);
+      if (error) {
+        res.status(200).json({ orders: [], warning: error });
+        return;
+      }
+      res.json({ orders, ensSubdomain: ensSubdomain.trim().toLowerCase() });
+    } catch (err) {
+      console.error("[monerium/orders-by-subdomain]", err);
+      res.status(500).json({ orders: [], error: String(err) });
+    }
+  });
+
+  app.post("/monerium/redeem", async (req, res) => {
+    try {
+      const { account, amount, salt, ensSubdomain, messageAt } = req.body as {
+        account?: string;
+        amount?: string;
+        salt?: string;
+        ensSubdomain?: string;
+        /** ISO 8601 — must be recent; Monerium rejects expired order messages. Omit = server uses current UTC minute. */
+        messageAt?: string;
+      };
+
+      if (!account || typeof account !== "string") {
+        res.status(400).json({ ok: false, error: "account (smart account / SCA address) is required" });
+        return;
+      }
+      if (!amount || typeof amount !== "string") {
+        res.status(400).json({ ok: false, error: "amount (EURe amount string, e.g. \"0.012\") is required" });
+        return;
+      }
+
+      const result = await executeOfframp(account, amount, salt, ensSubdomain, messageAt);
+      if (!result.ok) {
+        res.status(422).json(result);
+        return;
+      }
+
+      res.json(result);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("[monerium/redeem]", message);
+      res.status(500).json({ ok: false, error: message });
+    }
+  });
+
+  // POST /monerium/link-address
+  // Body: { account: "0x...", ensSubdomain?: "dronez", chain?: "sepolia" }
+  // Links the SCA to the user's Monerium profile (Monerium POST /addresses).
+  // 201 = linked; 202 = run returned batch (signMsg) on-chain, same as redeem flow.
+  app.post("/monerium/link-address", async (req, res) => {
+    try {
+      const { account, ensSubdomain, chain } = req.body as {
+        account?: string;
+        ensSubdomain?: string;
+        chain?: string;
+      };
+
+      if (!account || typeof account !== "string") {
+        res.status(400).json({ ok: false, error: "account (address to link) is required" });
+        return;
+      }
+
+      const result = await linkMoneriumAddress(account, ensSubdomain, chain);
+      if (!result.ok) {
+        res.status(422).json(result);
+        return;
+      }
+
+      res.status(result.moneriumHttpStatus).json(result);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("[monerium/link-address]", message);
+      res.status(500).json({ ok: false, error: message });
+    }
+  });
+
   // ── Start ───────────────────────────────────────────────────────
 
   app.listen(config.port, () => {
@@ -428,6 +545,10 @@ async function bootstrap(): Promise<void> {
     console.log("  GET  /getSubdomainBySeed?seedAddress=0x...");
     console.log("  POST /subdomains/register");
     console.log("  POST /subdomains/update-text");
+    console.log("  GET  /monerium/orders?seedAddress=0x...");
+    console.log("  GET  /monerium/orders-by-subdomain?ensSubdomain=...");
+    console.log("  POST /monerium/redeem");
+    console.log("  POST /monerium/link-address");
   });
 }
 

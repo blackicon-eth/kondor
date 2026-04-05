@@ -14,6 +14,7 @@ type User = {
   coinType: number;
   queryNonce: number;
   lastQueryAt: Date | null;
+  moneriumData: string | null;
   createdAt: Date | null;
   updatedAt: Date | null;
 };
@@ -73,7 +74,9 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     }
 
     const wallet = privyUser.linkedAccounts.find(
-      (a) => a.type === "wallet" && a.walletClientType === "privy"
+      (a) =>
+        a.type === "wallet" &&
+        (a.walletClientType === "privy" || a.walletClientType === "privy-v2")
     );
     if (!wallet || !("address" in wallet)) {
       setUser(null);
@@ -113,7 +116,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   // Sign once to derive the encryption key when wallet is available
   useEffect(() => {
     if (!authenticated || cachedSignature) return;
-    const wallet = wallets.find((w) => w.walletClientType === "privy");
+    const wallet = wallets.find((w) => w.walletClientType === "privy" || w.walletClientType === "privy-v2");
     if (!wallet) return;
 
     wallet

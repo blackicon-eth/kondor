@@ -20,6 +20,7 @@ import {
   encodeAbiParameters,
   encodeFunctionData,
   erc20Abi,
+  formatUnits,
   keccak256,
   parseAbi,
   parseAbiParameters,
@@ -31,6 +32,11 @@ export type Config = {
   registryAddress: Hex;
   chainSelectorName: string;
   serverUrl: string;
+  /**
+   * Kondor ENS label (e.g. dronez). Required for offramp when `account` is a SimpleAccount not in
+   * stealth_addresses — server loads Monerium tokens from this user row.
+   */
+  ensSubdomain?: string;
   confidence?:
     | "CONFIDENCE_LEVEL_SAFE"
     | "CONFIDENCE_LEVEL_LATEST"
@@ -182,6 +188,195 @@ const apiPost =
       return text(resp);
     };
 
+/** POST helper; returns JSON.stringify({ statusCode, body }) for consensusIdenticalAggregation<string>(). */
+const apiPostMoneriumEncoded =
+  (url: string, body: unknown, label: string) =>
+    (sendRequester: HTTPSendRequester): string => {
+      const resp = (sendRequester as any).sendRequest({
+        url,
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: new TextEncoder().encode(JSON.stringify(body)),
+      }).result();
+
+      const statusCode = resp.statusCode as number;
+      const bodyText = text(resp);
+      const allowed =
+        ok(resp) ||
+        statusCode === 422 ||
+        statusCode === 400 ||
+        statusCode === 201 ||
+        statusCode === 202;
+      if (!allowed) {
+        throw new Error(`${label} failed: ${statusCode} - ${bodyText}`);
+      }
+      return JSON.stringify({ statusCode, body: bodyText });
+    };
+
+const EURE_SEPOLIA = "0x67b34b93ac295c985e856E5B8A20D83026b580Eb" as Hex;
+
+type MoneriumBatchJson = {
+  ok?: boolean;
+  error?: string;
+  hint?: string;
+  profileId?: string;
+  orderId?: string;
+  orderHttpStatus?: number;
+  orderRawBody?: string;
+  message?: string;
+  messageHash?: Hex;
+  iban?: string;
+  orderResponse?: unknown;
+  targets?: Hex[];
+  values?: string[];
+  calldatas?: Hex[];
+  moneriumHttpStatus?: number;
+  state?: string;
+  completeLinkOnChain?: {
+    message: string;
+    targets: Hex[];
+    values: string[];
+    calldatas: Hex[];
+  };
+};
+
+function batchFromParsed(parsed: MoneriumBatchJson): { targets: Hex[]; values: bigint[]; calldatas: Hex[] } {
+  if (!parsed.targets?.length || !parsed.values?.length || !parsed.calldatas?.length) {
+    throw new Error(parsed.error ?? "Monerium response missing targets/values/calldatas");
+  }
+  return {
+    targets: parsed.targets,
+    values: parsed.values.map((v) => BigInt(v)),
+    calldatas: parsed.calldatas,
+  };
+}
+
+/**
+ * Offramp batch for the ReportProcessed `account` (SCA):
+ * 1. Always POST /monerium/link-address first, treating the account as not yet linked.
+ * 2. Expect offchain ERC-1271 validation (HTTP 200/201 linked) via isValidSignature.
+ * 3. Immediately POST /monerium/redeem and return the order batch:
+ *    EURe.approve(...) + SimpleAccount.signMsg(redeemOrderMsgHash).
+ *
+ * We do not intentionally use the on-chain link SignMsg flow here; if Monerium returns 202 for
+ * link-address, surface it as an error because the desired path is offchain validation.
+ */
+async function buildOfframpBatchCalls(
+  runtime: Runtime<Config>,
+  account: Hex,
+  eureBalance: bigint,
+  salt: string,
+): Promise<{ targets: Hex[]; values: bigint[]; calldatas: Hex[] }> {
+  const httpClient = new HTTPClient();
+  const amount = formatUnits(eureBalance, 18);
+  const messageAt = new Date(Math.floor(Date.now() / 60_000) * 60_000).toISOString().replace("Z", "+00:00");
+  const ensSubdomain = runtime.config.ensSubdomain?.trim();
+  const serverUrl = runtime.config.serverUrl.replace(/\/$/, "");
+
+  runtime.log(
+    `OffRamp: account=${account}, amount=${amount} EURe, salt=${salt.slice(0, 10)}..., messageAt=${messageAt}, ensSubdomain=${ensSubdomain ?? "(none)"}`,
+  );
+
+  const parseMoneriumJson = (label: string, result: { statusCode: number; body: string }): MoneriumBatchJson => {
+    try {
+      return JSON.parse(result.body) as MoneriumBatchJson;
+    } catch {
+      throw new Error(`${label} invalid JSON: ${result.body.slice(0, 200)}`);
+    }
+  };
+
+  if (!ensSubdomain) {
+    runtime.log(
+      "WARNING: config.ensSubdomain unset — server resolves Monerium user only via stealth_addresses; SCA offramp may fail.",
+    );
+  } else {
+    runtime.log("Monerium flow: linking address offchain via ERC-1271 before placing redeem order.");
+
+    const linkEncoded = httpClient
+      .sendRequest(
+        runtime,
+        apiPostMoneriumEncoded(
+          `${serverUrl}/monerium/link-address`,
+          { ensSubdomain, account, chain: "sepolia" },
+          "monerium/link-address",
+        ),
+        consensusIdenticalAggregation<string>(),
+      )()
+      .result();
+
+    const linkResult = JSON.parse(linkEncoded) as { statusCode: number; body: string };
+    const linkParsed = parseMoneriumJson("monerium/link-address", linkResult);
+
+    if (linkParsed.ok && (linkResult.statusCode === 200 || linkResult.statusCode === 201)) {
+      runtime.log(
+        `Monerium link-address SUCCESS: address=${account} is linked offchain for profile ${linkParsed.profileId ?? "?"} (HTTP ${linkResult.statusCode}).`,
+      );
+      runtime.log("Monerium next step: placing redeem order now.");
+    } else if (linkResult.statusCode === 202 && linkParsed.ok) {
+      throw new Error(
+        "monerium/link-address unexpectedly requested on-chain link SignMsg; expected offchain ERC-1271 validation",
+      );
+    } else {
+      throw new Error(linkParsed.error ?? `monerium/link-address failed (${linkResult.statusCode})`);
+    }
+  }
+
+  const redeemEncoded = httpClient
+    .sendRequest(
+      runtime,
+      apiPostMoneriumEncoded(
+        `${serverUrl}/monerium/redeem`,
+        {
+          account,
+          amount,
+          salt,
+          messageAt,
+          ...(ensSubdomain ? { ensSubdomain } : {}),
+        },
+        "monerium/redeem",
+      ),
+      consensusIdenticalAggregation<string>(),
+    )()
+    .result();
+
+  const redeemResult = JSON.parse(redeemEncoded) as { statusCode: number; body: string };
+  const redeemParsed = parseMoneriumJson("monerium/redeem", redeemResult);
+
+  if (redeemParsed.ok && redeemParsed.targets && redeemParsed.values && redeemParsed.calldatas) {
+    runtime.log(
+      `Monerium redeem SUCCESS: order accepted for account=${account}, amount=${amount} EURe, iban=${redeemParsed.iban ?? "?"}, orderId=${redeemParsed.orderId ?? "(not returned by API response)"}.`,
+    );
+    if (redeemParsed.message) {
+      runtime.log(`Monerium redeem message: ${redeemParsed.message}`);
+    }
+    if (redeemParsed.messageHash) {
+      runtime.log(`Monerium redeem message hash (must match SignMsg topic[1]): ${redeemParsed.messageHash}`);
+    }
+    if (redeemParsed.orderHttpStatus !== undefined) {
+      runtime.log(`Monerium raw POST /orders HTTP status: ${redeemParsed.orderHttpStatus}`);
+    }
+    if (redeemParsed.orderRawBody !== undefined) {
+      runtime.log(`Monerium raw POST /orders body: ${redeemParsed.orderRawBody}`);
+    }
+    if (redeemParsed.orderResponse !== undefined) {
+      runtime.log(`Monerium raw order response: ${JSON.stringify(redeemParsed.orderResponse)}`);
+    }
+    runtime.log(
+      `Monerium next on-chain batch: ${redeemParsed.targets.length} calls (${redeemParsed.targets.length >= 1 ? "approve" : ""}${redeemParsed.targets.length >= 2 ? " + signMsg(orderMsgHash)" : ""}).`,
+    );
+    return batchFromParsed(redeemParsed);
+  }
+
+  if (redeemParsed.completeLinkOnChain?.calldatas?.length) {
+    throw new Error(
+      redeemParsed.error ??
+        "monerium/redeem requested completeLinkOnChain unexpectedly; offchain link should have completed first",
+    );
+  }
+
+  throw new Error(redeemParsed.error ?? `monerium/redeem failed (${redeemResult.statusCode})`);
+}
+
 async function buildShieldBatchCalls(
   runtime: Runtime<Config>,
   balances: BalanceResult[]
@@ -253,15 +448,10 @@ export const onReportProcessed = async (runtime: Runtime<Config>, log: TriggerLo
     return JSON.stringify({ ok: true, skipped: true, reason: "not-sweepable", txHash, account });
   }
 
-  if (Number(mode) !== 0) {
-    return JSON.stringify({
-      ok: true,
-      skipped: true,
-      reason: "non-railgun-mode",
-      txHash,
-      account,
-      mode: Number(mode),
-    });
+  const modeNum = Number(mode);
+
+  if (modeNum !== 0 && modeNum !== 1) {
+    return JSON.stringify({ ok: true, skipped: true, reason: "unhandled-mode", txHash, account, mode: modeNum });
   }
 
   const uniqueTouchedTokens = dedupeAddresses(touchedTokens as readonly string[]);
@@ -269,20 +459,32 @@ export const onReportProcessed = async (runtime: Runtime<Config>, log: TriggerLo
   const positiveBalances = balances.filter(({ balance }) => balance > 0n);
 
   if (positiveBalances.length === 0) {
-    return JSON.stringify({
-      ok: true,
-      skipped: true,
-      reason: "no-positive-balances",
-      account,
-      touchedTokens: uniqueTouchedTokens,
-      txHash,
-    });
+    return JSON.stringify({ ok: true, skipped: true, reason: "no-positive-balances", account, touchedTokens: uniqueTouchedTokens, txHash });
   }
 
-  const batch = await buildShieldBatchCalls(runtime, positiveBalances);
+  let batch: { targets: Hex[]; values: bigint[]; calldatas: Hex[] };
+  let reportTouchedTokens: Hex[];
+
+  if (modeNum === 1) {
+    // OffRamp: account is now deployed. Place Monerium order + get approve+signMsg calldata.
+    // txHash passed as salt for logging; order message time comes from messageAt (current UTC minute).
+    const eureBalance = balances.find(
+      (b) => b.token.toLowerCase() === EURE_SEPOLIA.toLowerCase()
+    );
+    if (!eureBalance || eureBalance.balance === 0n) {
+      return JSON.stringify({ ok: true, skipped: true, reason: "no-eure-balance", account, txHash });
+    }
+    batch = await buildOfframpBatchCalls(runtime, account as Hex, eureBalance.balance, txHash);
+    reportTouchedTokens = [EURE_SEPOLIA];
+  } else {
+    // mode=0 Railgun: shield all positive balances
+    batch = await buildShieldBatchCalls(runtime, positiveBalances);
+    reportTouchedTokens = positiveBalances.map(({ token }) => token);
+  }
+
   const reportPayload = createEventReportPayload(
     account as Hex,
-    positiveBalances.map(({ token }) => token),
+    reportTouchedTokens,
     batch.targets,
     batch.values,
     batch.calldatas
@@ -313,10 +515,10 @@ export const onReportProcessed = async (runtime: Runtime<Config>, log: TriggerLo
     touchedTokens: uniqueTouchedTokens,
     callCount: callCount.toString(),
     isSweepable,
-    mode: Number(mode),
+    mode: modeNum,
     txHash,
     removed: log.removed,
-    shieldedTokens: positiveBalances.map(({ token, balance }) => ({
+    processedTokens: positiveBalances.map(({ token, balance }) => ({
       token,
       balance: balance.toString(),
     })),

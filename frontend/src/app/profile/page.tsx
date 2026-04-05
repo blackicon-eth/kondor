@@ -5,7 +5,10 @@ import { motion } from "motion/react";
 import { toast } from "sonner";
 import { useUser } from "@/context/user-context";
 import { usePrivy } from "@privy-io/react-auth";
+import { useAuth, useAuthContext } from "@monerium/sdk-react-provider";
+import { useClearMoneriumSession } from "@/components/monerium-wrapper";
 import ky from "ky";
+import { useRouter } from "next/navigation";
 import {
   Shield,
   Landmark,
@@ -15,12 +18,16 @@ import {
   Loader2,
   ArrowDownToLine,
   Sparkles,
+  ArrowRight,
+  CheckCircle2,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 
 const RECOVERY_ENTRIES = [
-  { address: "st_0x4f...92E1", amount: "4.821", token: "ETH" },
-  { address: "st_0x91...C2A4", amount: "1,402", token: "USDC" },
-  { address: "st_0xA4...00F2", amount: "0.952", token: "ETH" },
+  { address: "st_0x4f...92E1", amount: "0.047", token: "ETH" },
+  { address: "st_0x91...C2A4", amount: "0.012", token: "USDC" },
+  { address: "st_0xA4...00F2", amount: "0.001", token: "ETH" },
 ];
 
 const stagger = {
@@ -40,13 +47,20 @@ const fadeUp = {
 export default function Profile() {
   const { user, userZkAddress, userForwardTo, refetch } = useUser();
   const { user: privyUser, getAccessToken } = usePrivy();
+  const { isAuthorized, isLoading: moneriumLoading, authorize, disconnect } = useAuth();
+  const { data: authCtx } = useAuthContext({});
+  const clearStoredSession = useClearMoneriumSession();
+  const router = useRouter();
   const [zkAddress, setZkAddress] = useState(userZkAddress ?? "");
   const [destinationWallet, setDestinationWallet] = useState(userForwardTo ?? "");
+  const [moneriumInfoVisible, setMoneriumInfoVisible] = useState(false);
   const [updatingZkAddress, setUpdatingZkAddress] = useState(false);
   const [updatingDestinationWallet, setUpdatingDestinationWallet] = useState(false);
 
   const seedAddress = privyUser?.linkedAccounts.find(
-    (a) => a.type === "wallet" && a.walletClientType === "privy"
+    (a) =>
+      a.type === "wallet" &&
+      (a.walletClientType === "privy" || a.walletClientType === "privy-v2")
   );
 
   async function handleUpdateZkAddress() {
@@ -236,26 +250,67 @@ export default function Profile() {
             {/* Red corner accent */}
             <div
               className="absolute top-0 right-0 w-20 h-20 bg-primary-container"
-              style={{
-                clipPath: "polygon(100% 0, 0 0, 100% 100%)",
-              }}
+              style={{ clipPath: "polygon(100% 0, 0 0, 100% 100%)" }}
             />
             <div className="absolute top-2.5 right-2.5 z-10">
               <ArrowDownToLine className="size-5 text-on-primary-container" />
             </div>
 
-            <div className="relative z-10 p-8">
+            <div className="relative z-10 p-8 h-full flex flex-col">
               <h3 className="font-headline font-bold text-on-surface uppercase tracking-wider text-base mb-3">
                 Monerium
               </h3>
-              <p className="text-secondary-ds text-sm font-body leading-relaxed mb-6">
-                Bridge your on-chain assets with the European e-money ecosystem through secure IBAN
-                integration.
-              </p>
-              <button className="flex items-center gap-2 w-full justify-center bg-surface-container-highest text-on-surface px-5 py-3 font-headline font-bold uppercase text-[11px] tracking-widest hover:bg-primary-container hover:text-on-primary-container transition-all cursor-pointer border border-outline-variant/10">
-                <Landmark className="size-3.5" />
-                Connect Monerium
-              </button>
+
+              {isAuthorized && authCtx ? (
+                <>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="size-3.5 text-green-400 shrink-0" />
+                      <span className="font-label text-[10px] uppercase tracking-widest text-green-400">
+                        Connected
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => setMoneriumInfoVisible((v) => !v)}
+                      className="text-secondary-ds hover:text-on-surface transition-colors cursor-pointer"
+                    >
+                      {moneriumInfoVisible ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+                    </button>
+                  </div>
+                  <p className="text-secondary-ds text-sm font-body leading-relaxed mb-1 truncate">
+                    {moneriumInfoVisible ? authCtx.email : "•".repeat(Math.min((authCtx.email ?? "").length, 20))}
+                  </p>
+                  <p className="font-label text-[10px] text-secondary-container tracking-wide mb-6 truncate">
+                    {moneriumInfoVisible ? authCtx.defaultProfile : "•".repeat(Math.min((authCtx.defaultProfile ?? "").length, 24))}
+                  </p>
+                  <button
+                    onClick={() => router.push("/monerium")}
+                    className="flex items-center gap-2 w-full justify-center bg-primary-container text-on-primary-container px-5 py-3 font-headline font-bold uppercase text-[11px] tracking-widest hover:bg-white hover:text-surface transition-all cursor-pointer mt-auto"
+                  >
+                    Go to Monerium Profile
+                    <ArrowRight className="size-3.5" />
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p className="text-secondary-ds text-sm font-body leading-relaxed mb-6">
+                    Bridge your on-chain assets with the European e-money ecosystem through
+                    secure IBAN integration.
+                  </p>
+                  <button
+                    onClick={() => authorize()}
+                    disabled={moneriumLoading}
+                    className="flex items-center gap-2 w-full justify-center bg-surface-container-highest text-on-surface px-5 py-3 font-headline font-bold uppercase text-[11px] tracking-widest hover:bg-primary-container hover:text-on-primary-container transition-all cursor-pointer border border-outline-variant/10 disabled:opacity-50 disabled:cursor-not-allowed mt-auto"
+                  >
+                    {moneriumLoading ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : (
+                      <Landmark className="size-3.5" />
+                    )}
+                    {moneriumLoading ? "Connecting..." : "Connect Monerium"}
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </motion.div>

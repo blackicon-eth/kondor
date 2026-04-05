@@ -42,7 +42,9 @@ export default function Onboarding() {
     if (!subdomain.trim()) return;
 
     const wallet = privyUser?.linkedAccounts.find(
-      (a) => a.type === "wallet" && a.walletClientType === "privy"
+      (a) =>
+        a.type === "wallet" &&
+        (a.walletClientType === "privy" || a.walletClientType === "privy-v2")
     );
     if (!wallet || !("address" in wallet)) return;
 

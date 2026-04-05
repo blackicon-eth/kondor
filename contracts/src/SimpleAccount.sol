@@ -16,9 +16,12 @@ contract SimpleAccount is IERC1271 {
     address public registry;
     bool private _initialized;
 
+    event SignMsg(bytes32 indexed msgHash);
+
     error AlreadyInitialized();
     error NotAuthorized();
     error CallFailed(uint256 index);
+    error SignMsgNotInner();
 
     modifier onlyAuthorized() {
         if (msg.sender != registry && keccak256(abi.encodePacked(msg.sender)) != hashedOwner) {
@@ -42,6 +45,14 @@ contract SimpleAccount is IERC1271 {
         (bool ok, bytes memory result) = to.call{value: value}(data);
         if (!ok) revert CallFailed(0);
         return result;
+    }
+
+    /// @notice Monerium / EIP-1271 helper: emit the message hash the protocol expects to observe on-chain.
+    /// @dev Must be invoked as a subcall from `execute` or `batchExecute` (e.g. target = address(this) in a
+    ///      registry `onReport` batch). Direct external calls revert so arbitrary wallets cannot spam the event.
+    function signMsg(bytes32 msgHash) external {
+        if (msg.sender != address(this)) revert SignMsgNotInner();
+        emit SignMsg(msgHash);
     }
 
     /// @notice Execute a batch of calls atomically from this account.
