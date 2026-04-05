@@ -6,7 +6,8 @@
  * API using whatever refresh token is currently in the DB for the user.
  */
 import "./env";
-import { hashMessage, encodeFunctionData, erc20Abi, type Hex } from "viem";
+import { hashMessage, encodeFunctionData, erc20Abi, keccak256, toBytes, type Hex } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
 import { createClient } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
 import { users } from "../../shared/db/db.schema.js";
@@ -18,15 +19,7 @@ const MONERIUM_CLIENT_ID = process.env.MONERIUM_CLIENT_ID!;
 const EURE_SEPOLIA = "0x67b34b93ac295c985e856E5B8A20D83026b580Eb" as Hex;
 const MONERIUM_CONTROLLER = "0x5e0a62e88fa3fbf15c2a14a7cdf3a6d625b1e58f" as Hex;
 
-const SIGN_MSG_ABI = [
-  {
-    name: "signMsg",
-    type: "function",
-    inputs: [{ name: "msgHash", type: "bytes32" }],
-    outputs: [],
-    stateMutability: "nonpayable",
-  },
-] as const;
+const DUMMY_SIGNER = privateKeyToAccount(keccak256(toBytes("kondor-monerium-dummy-link-signer")) as Hex);
 
 async function main() {
   // ── Get refresh token from DB ──────────────────────────────────────────────
@@ -101,6 +94,8 @@ async function main() {
   console.log("Message:", message);
 
   // ── Place order ────────────────────────────────────────────────────────────
+  // Offchain ERC-1271: dummy sig → isValidSignature → magic value → 200 OK (no SignMsg needed)
+  const signature = await DUMMY_SIGNER.signMessage({ message });
   const orderPayload = {
     kind: "redeem",
     address: ACCOUNT,
@@ -108,7 +103,7 @@ async function main() {
     network: "sepolia",
     amount: AMOUNT,
     currency: "eur",
-    signature: "0x",
+    signature,
     message,
     counterpart: {
       identifier: { standard: "iban", iban: approvedIban.iban },
@@ -136,8 +131,9 @@ async function main() {
   console.log("\nOrder ID:", order.id);
 
   // ── Compute on-chain calldata ──────────────────────────────────────────────
+  // Only approve needed — offchain ERC-1271 means no SignMsg on-chain
   const msgHash = hashMessage(message);
-  console.log("msgHash:", msgHash);
+  console.log("msgHash (for reference):", msgHash);
 
   const approveCalldata = encodeFunctionData({
     abi: erc20Abi,
@@ -145,17 +141,10 @@ async function main() {
     args: [MONERIUM_CONTROLLER, BigInt("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")],
   });
 
-  const signMsgCalldata = encodeFunctionData({
-    abi: SIGN_MSG_ABI,
-    functionName: "signMsg",
-    args: [msgHash as Hex],
-  });
-
   console.log("\n=== CRE batch calldata ===");
-  console.log("targets:", [EURE_SEPOLIA, ACCOUNT]);
-  console.log("values: [0, 0]");
+  console.log("targets:", [EURE_SEPOLIA]);
+  console.log("values: [0]");
   console.log("calldatas[0] (approve):", approveCalldata);
-  console.log("calldatas[1] (signMsg):", signMsgCalldata);
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });

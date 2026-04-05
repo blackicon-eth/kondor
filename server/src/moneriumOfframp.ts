@@ -320,7 +320,7 @@ export interface OfframpError {
 
 function buildLinkAddressSignMsgBatch(normalizedLower: string): CompleteLinkOnChain {
   const message = MONERIUM_LINK_ADDRESS_MESSAGE;
-  const msgHash = hashMessage(message);
+  const msgHash = keccak256(toBytes(message));
   const signMsgCalldata = encodeFunctionData({
     abi: SIGN_MSG_ABI,
     functionName: "signMsg",
@@ -386,6 +386,11 @@ export async function executeOfframp(
     };
   }
 
+  // Offchain ERC-1271: sign the order message with the dummy signer.
+  // Monerium sees our SCA has code → calls isValidSignature(hashMessage(msg), sig) → magic value → 200 OK.
+  // This avoids the 202/SignMsg on-chain round-trip entirely.
+  const orderSignature = await DUMMY_LINK_SIGNER.signMessage({ message });
+
   let order: unknown;
   let orderHttpStatus: number;
   let orderRawBody: string;
@@ -397,7 +402,7 @@ export async function executeOfframp(
       network: "sepolia",
       amount,
       currency: "eur",
-      signature: "0x",    // empty — isValidSignature always returns magic value
+      signature: orderSignature, // offchain ERC-1271: dummy sig → isValidSignature → magic value → 200
       message,
       counterpart: {
         identifier: {
@@ -430,24 +435,16 @@ export async function executeOfframp(
   }
 
   // ── 5. Build on-chain calldata for the CRE batch ─────────────────────────
-  // a) EURe.approve(moneriumController, maxUint) — so Monerium can burnFrom
+  // Offchain ERC-1271 succeeded → Monerium already accepted the order (200 OK, has order id).
+  // The only on-chain action needed is EURe.approve(moneriumController, maxUint) so Monerium can burnFrom.
+  // No SignMsg event needed.
   const approveCalldata = encodeFunctionData({
     abi: erc20Abi,
     functionName: "approve",
     args: [MONERIUM_CONTROLLER_SEPOLIA, BigInt("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")],
   });
 
-  // b) SimpleAccount.signMsg(msgHash) — emits SignMsg event Monerium observes on-chain
-  //    Uses EIP-191 personal_sign hash (same as eth_sign / hashMessage)
-  //    Called as a self-call inside batchExecute: target = account, so msg.sender == address(this) ✓
-  const msgHash = hashMessage(message);
-  const signMsgCalldata = encodeFunctionData({
-    abi: SIGN_MSG_ABI,
-    functionName: "signMsg",
-    args: [msgHash as Hex],
-  });
-
-  const accountHex = getAddress(normalized) as Hex;
+  const msgHash = hashMessage(message); // kept for logging
 
   return {
     ok: true,
@@ -459,12 +456,11 @@ export async function executeOfframp(
     iban: approvedIban.iban,
     amount,
     orderResponse: order,
-    // CRE executes this batch on-chain via batchExecute:
-    //   1. EURe.approve(controller, maxUint)
-    //   2. SimpleAccount(self).signMsg(msgHash) — emits SignMsg for Monerium
-    targets: [EURE_SEPOLIA, accountHex],
-    values: ["0", "0"],
-    calldatas: [approveCalldata, signMsgCalldata],
+    // CRE executes a single on-chain call: EURe.approve(moneriumController, maxUint)
+    // Monerium will burnFrom once it confirms the offchain ERC-1271 order signature.
+    targets: [EURE_SEPOLIA],
+    values: ["0"],
+    calldatas: [approveCalldata],
   };
 }
 
