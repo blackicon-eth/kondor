@@ -36,7 +36,15 @@ type Order = {
   amount: string;
   currency: string;
   state: string;
+  address: string;
+  chain: string;
+  memo?: string;
   counterpart: unknown;
+  meta?: {
+    placedAt?: string;
+    processedAt?: string;
+    txHashes?: string[];
+  };
 };
 
 const fadeUp = {
@@ -105,11 +113,11 @@ export default function MoneriumPage() {
   const [ordersLoading, setOrdersLoading] = useState(false);
 
   const fetchOrders = useCallback(async () => {
-    if (!user?.seedAddress) return;
+    if (!user?.ensSubdomain) return;
     setOrdersLoading(true);
     try {
       const serverUrl = process.env.NEXT_PUBLIC_SERVER_URL ?? "http://localhost:3001";
-      const res = await fetch(`${serverUrl}/monerium/orders?seedAddress=${encodeURIComponent(user.seedAddress)}`);
+      const res = await fetch(`${serverUrl}/monerium/orders-by-subdomain?ensSubdomain=${encodeURIComponent(user.ensSubdomain)}`);
       if (res.ok) {
         const data = await res.json() as { orders: Order[] };
         setOrderList(data.orders ?? []);
@@ -117,7 +125,7 @@ export default function MoneriumPage() {
     } finally {
       setOrdersLoading(false);
     }
-  }, [user?.seedAddress]);
+  }, [user?.ensSubdomain]);
 
   useEffect(() => {
     if (isAuthorized) fetchOrders();
@@ -321,40 +329,55 @@ export default function MoneriumPage() {
               ) : (
                 <div>
                   <div className="grid grid-cols-12 gap-2 py-2 border-b border-outline-variant/10">
-                    <div className="col-span-2 font-label text-[9px] uppercase tracking-widest text-secondary-container">Kind</div>
+                    <div className="col-span-1 font-label text-[9px] uppercase tracking-widest text-secondary-container">Kind</div>
                     <div className="col-span-2 font-label text-[9px] uppercase tracking-widest text-secondary-container">Amount</div>
-                    <div className="col-span-5 font-label text-[9px] uppercase tracking-widest text-secondary-container">Counterpart</div>
-                    <div className="col-span-3 font-label text-[9px] uppercase tracking-widest text-secondary-container text-right">State</div>
+                    <div className="col-span-3 font-label text-[9px] uppercase tracking-widest text-secondary-container">Address</div>
+                    <div className="col-span-3 font-label text-[9px] uppercase tracking-widest text-secondary-container">Date</div>
+                    <div className="col-span-2 font-label text-[9px] uppercase tracking-widest text-secondary-container text-right">State</div>
+                    <div className="col-span-1 font-label text-[9px] uppercase tracking-widest text-secondary-container text-right">Tx</div>
                   </div>
                   {orderList.map((order, i) => {
                     const isRedeem = order.kind === OrderKind.redeem;
-                    const cp = order.counterpart as Record<string, unknown> | null;
-                    const cpId = cp && "identifier" in cp ? (cp.identifier as Record<string, string> | null) : null;
-                    const counterpart = cpId?.iban ?? cpId?.address ?? "—";
                     const stateColor =
                       order.state === OrderState.processed ? "text-green-400" :
                       order.state === OrderState.rejected ? "text-primary-container" :
                       order.state === OrderState.pending ? "text-yellow-400" : "text-secondary-ds";
                     const StateIcon = order.state === OrderState.processed ? CheckCircle2 : order.state === OrderState.rejected ? XCircle : Clock;
+                    const placedAt = order.meta?.placedAt
+                      ? new Date(order.meta.placedAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
+                      : "—";
+                    const txHash = order.meta?.txHashes?.[0];
+                    const sepoliaUrl = txHash ? `https://sepolia.etherscan.io/tx/${txHash}` : null;
 
                     return (
                       <div key={order.id} className={`grid grid-cols-12 gap-2 py-2.5 items-center hover:bg-surface-container-low transition-colors ${i < orderList.length - 1 ? "border-b border-outline-variant/10" : ""}`}>
-                        <div className="col-span-2 flex items-center gap-1.5">
+                        <div className="col-span-1 flex items-center">
                           {isRedeem
-                            ? <ArrowUpRight className="size-3 text-primary-container shrink-0" />
-                            : <ArrowDownLeft className="size-3 text-green-400 shrink-0" />}
-                          <span className="font-label text-[10px] text-secondary-ds uppercase tracking-wide">{order.kind}</span>
+                            ? <ArrowUpRight className="size-3.5 text-primary-container shrink-0" title="Redeem" />
+                            : <ArrowDownLeft className="size-3.5 text-green-400 shrink-0" title="Issue" />}
                         </div>
                         <div className="col-span-2">
                           <span className="font-label text-xs font-bold text-on-surface">{order.amount}</span>
                           <span className="font-label text-[9px] text-secondary-ds ml-1 uppercase">{order.currency}</span>
                         </div>
-                        <div className="col-span-5">
-                          <code className="font-label text-[10px] text-secondary-ds truncate block">{counterpart}</code>
+                        <div className="col-span-3">
+                          <code className="font-label text-[10px] text-secondary-ds">
+                            {order.address.slice(0, 6)}…{order.address.slice(-4)}
+                          </code>
                         </div>
-                        <div className="col-span-3 flex justify-end items-center gap-1">
+                        <div className="col-span-3">
+                          <span className="font-label text-[10px] text-secondary-ds">{placedAt}</span>
+                        </div>
+                        <div className="col-span-2 flex justify-end items-center gap-1">
                           <StateIcon className={`size-3 shrink-0 ${stateColor}`} />
                           <span className={`font-label text-[9px] uppercase tracking-widest ${stateColor}`}>{order.state}</span>
+                        </div>
+                        <div className="col-span-1 flex justify-end">
+                          {sepoliaUrl ? (
+                            <a href={sepoliaUrl} target="_blank" rel="noopener noreferrer" className="text-secondary-ds hover:text-primary-container transition-colors" title={txHash}>
+                              <ArrowUpRight className="size-3" />
+                            </a>
+                          ) : <span className="text-outline-variant/30 font-label text-[9px]">—</span>}
                         </div>
                       </div>
                     );
